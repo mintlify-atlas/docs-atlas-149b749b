@@ -17,20 +17,22 @@ the primary write path used by all OwlMetry SDKs.
 | `Authorization` | Yes | `Bearer owl_client_xxx` |
 | `Content-Type` | Yes | `application/json` |
 | `Content-Encoding` | No | Set to `gzip` to send a compressed body. |
-| `X-Bundle-ID` | Conditional | Required when the app was created with a `bundle_id`. Must match exactly. |
 
 ## Request body
 
 <ParamField body="bundle_id" type="string">
   The app's bundle or package identifier. Required when the app has a
-  `bundle_id` configured. Must match `X-Bundle-ID` if both are present.
+  `bundle_id` configured (i.e., all platforms except `backend`). Must match the
+  bundle ID registered for the client key's app.
 </ParamField>
 
 <ParamField body="events" type="array" required>
   Array of event payloads. Maximum **100** events per request.
   <Expandable title="Event payload">
     <ParamField body="message" type="string" required>
-      Log message or event name. Must be a non-empty string.
+      Log message or event name. Must be a non-empty string. Special prefixes are recognized:
+      - `track:<stepName>` — funnel step tracking (e.g. `"track:signup-completed"`)
+      - `metric:<slug>:start|complete|fail|cancel|record` — structured metric events
     </ParamField>
     <ParamField body="level" type="string" required>
       Severity level. One of: `info`, `debug`, `warn`, `error`.
@@ -126,10 +128,9 @@ the primary write path used by all OwlMetry SDKs.
 ## Example
 
 ```bash
-curl -X POST https://api.yourdomain.com/v1/ingest \
+curl -X POST https://ingest.yourdomain.com/v1/ingest \
   -H "Authorization: Bearer owl_client_xxx" \
   -H "Content-Type: application/json" \
-  -H "X-Bundle-ID: com.example.myapp" \
   -d '{
     "bundle_id": "com.example.myapp",
     "events": [
@@ -174,7 +175,7 @@ curl -X POST https://api.yourdomain.com/v1/ingest \
         "session_id": "550e8400-e29b-41d4-a716-446655440000",
         "user_id": "user_alice",
         "level": "info",
-        "message": "owl.track checkout_completed",
+        "message": "track:checkout-completed",
         "environment": "ios",
         "app_version": "2.1.0",
         "is_dev": false,
