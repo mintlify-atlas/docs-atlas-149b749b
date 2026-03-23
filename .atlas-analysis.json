@@ -1,0 +1,191 @@
+{
+  "projectType": "saas",
+  "projectName": "OwlMetry",
+  "projectDescription": "Agent-first, self-hosted observability platform built on a single Postgres instance — query events, metrics, and funnels programmatically via API, CLI, and SDKs.",
+  "theme": "aspen",
+  "primaryColor": "#9c9c9d",
+  "lightColor": "#38383a",
+  "darkColor": "#c7c7c8",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "self-hosting"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/auth",
+              "concepts/projects-and-apps",
+              "concepts/events",
+              "concepts/metrics",
+              "concepts/funnels",
+              "concepts/experiments",
+              "concepts/identity"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/overview",
+              "cli/setup",
+              "cli/commands",
+              "cli/ai-skills"
+            ]
+          },
+          {
+            "group": "SDKs",
+            "pages": [
+              "sdks/node",
+              "sdks/swift"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "deploy/vps-setup",
+              "deploy/configuration",
+              "deploy/database-maintenance",
+              "deploy/updating"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/authentication"
+            ]
+          },
+          {
+            "group": "Auth",
+            "pages": [
+              "api-reference/auth/send-code",
+              "api-reference/auth/verify-code",
+              "api-reference/auth/agent-login",
+              "api-reference/auth/me",
+              "api-reference/auth/keys"
+            ]
+          },
+          {
+            "group": "Teams",
+            "pages": [
+              "api-reference/teams/create",
+              "api-reference/teams/get",
+              "api-reference/teams/members",
+              "api-reference/teams/invitations"
+            ]
+          },
+          {
+            "group": "Projects & Apps",
+            "pages": [
+              "api-reference/projects/list",
+              "api-reference/projects/create",
+              "api-reference/apps/list",
+              "api-reference/apps/create",
+              "api-reference/apps/users"
+            ]
+          },
+          {
+            "group": "Events & Ingest",
+            "pages": [
+              "api-reference/ingest/batch",
+              "api-reference/events/query",
+              "api-reference/events/get",
+              "api-reference/identity/claim"
+            ]
+          },
+          {
+            "group": "Metrics",
+            "pages": [
+              "api-reference/metrics/list",
+              "api-reference/metrics/create",
+              "api-reference/metrics/query",
+              "api-reference/metrics/events"
+            ]
+          },
+          {
+            "group": "Funnels",
+            "pages": [
+              "api-reference/funnels/list",
+              "api-reference/funnels/create",
+              "api-reference/funnels/query"
+            ]
+          },
+          {
+            "group": "Audit Logs",
+            "pages": [
+              "api-reference/audit-logs/query"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Agent-native API with owl_agent_ keys for fully programmatic observability",
+    "CLI with --format json for machine consumption and --format table for humans",
+    "Bundled AI skill files that teach coding agents (Claude Code, Codex, etc.) to set up and use OwlMetry",
+    "Batch event ingest with deduplication and gzip compression",
+    "Structured metrics with startOperation/complete/fail lifecycle tracking and aggregation queries",
+    "Funnel analytics with drop-off rates and experiment-aware grouping",
+    "Lightweight A/B experiments with client-side variant persistence",
+    "Anonymous identity with owl_anon_ IDs and retroactive user claim",
+    "Single Postgres deployment — no Kafka, ClickHouse, or Redis required",
+    "Monthly-partitioned events table with auto-pruning by database size",
+    "Role-based access control: owner > admin > member",
+    "Audit trail for all resource mutations, queryable via API and CLI",
+    "Swift SDK for iOS, iPadOS, and macOS with background flush support",
+    "Zero-dependency Node.js server SDK with serverless wrapHandler support"
+  ],
+  "publicApiSurface": [
+    "POST /v1/ingest",
+    "GET /v1/events",
+    "GET /v1/events/:id",
+    "POST /v1/auth/send-code",
+    "POST /v1/auth/verify-code",
+    "POST /v1/auth/agent-login",
+    "GET /v1/auth/me",
+    "GET /v1/auth/keys",
+    "POST /v1/auth/keys",
+    "GET /v1/projects",
+    "POST /v1/projects",
+    "GET /v1/apps",
+    "POST /v1/apps",
+    "GET /v1/apps/:id/users",
+    "POST /v1/identity/claim",
+    "GET /v1/projects/:projectId/metrics/:slug/query",
+    "GET /v1/projects/:projectId/funnels/:slug/query",
+    "GET /v1/teams/:teamId/audit-logs",
+    "Owl.configure()",
+    "Owl.info() / Owl.error() / Owl.warn() / Owl.debug()",
+    "Owl.track()",
+    "Owl.startOperation()",
+    "Owl.recordMetric()",
+    "Owl.getVariant()",
+    "Owl.withUser()",
+    "Owl.wrapHandler()",
+    "Owl.flush() / Owl.shutdown()",
+    "owlmetry setup",
+    "owlmetry auth send-code / auth verify",
+    "owlmetry events",
+    "owlmetry investigate",
+    "owlmetry projects / apps",
+    "owlmetry metrics query",
+    "owlmetry funnels query",
+    "owlmetry audit-log list",
+    "owlmetry skills"
+  ]
+}
