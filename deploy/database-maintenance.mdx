@@ -1,0 +1,119 @@
+---
+title: 'Database maintenance'
+description: 'How OwlMetry manages PostgreSQL partitions, auto-pruning, backups, and routine maintenance tasks.'
+keywords: ['database', 'postgresql', 'maintenance', 'backups', 'partitions', 'pruning']
+---
+
+## Monthly partitioning
+
+OwlMetry stores events in monthly PostgreSQL partitions. Partitions are created automatically on server startup — the current month plus two months ahead are always pre-created.
+
+This means you do not need to schedule any partition management jobs. As long as the server starts at least once per month, future partitions will be ready.
+
+<Note>
+If the server is offline when a new month begins, the first request after startup will trigger partition creation automatically.
+</Note>
+
+## Auto-pruning
+
+When `MAX_DATABASE_SIZE_GB` is set to a value greater than `0`, OwlMetry checks database size hourly and drops the oldest monthly event partitions when the limit is exceeded.
+
+To enable auto-pruning, set the variable in your `.env`:
+
+```bash
+MAX_DATABASE_SIZE_GB=8
+```
+
+Restart the API server after changing this value:
+
+```bash
+pm2 restart owlmetry-api
+```
+
+<Warning>
+Dropped partitions cannot be recovered unless you have a backup. Auto-pruning deletes the oldest data first.
+</Warning>
+
+## Backups
+
+Back up the database with `pg_dump`:
+
+```bash
+pg_dump owlmetry > backup.sql
+```
+
+To restore from a backup:
+
+```bash
+psql owlmetry < backup.sql
+```
+
+<Tip>
+Schedule backups with cron. A daily backup to an offsite location (object storage, remote server) is recommended for production deployments.
+</Tip>
+
+## Checking database size
+
+Check the total size of the `owlmetry` database:
+
+```bash
+psql -c "SELECT pg_size_pretty(pg_database_size('owlmetry'));"
+```
+
+To see individual partition sizes:
+
+```bash
+psql owlmetry -c "
+SELECT
+  relname AS partition,
+  pg_size_pretty(pg_total_relation_size(oid)) AS size
+FROM pg_class
+WHERE relname LIKE 'events_%'
+ORDER BY relname;
+"
+```
+
+## Manual cleanup
+
+If you need to reclaim disk space manually, you can drop a specific partition directly. Partitions follow the naming pattern `events_YYYY_MM`.
+
+```bash
+psql owlmetry -c "DROP TABLE events_2024_01;"
+```
+
+<Warning>
+Dropping a partition permanently deletes all events for that month. This action cannot be undone.
+</Warning>
+
+## Troubleshooting
+
+### Check service logs
+
+```bash
+pm2 logs owlmetry-api --lines 50
+pm2 logs owlmetry-web --lines 50
+```
+
+### Validate nginx configuration
+
+```bash
+nginx -t
+```
+
+### Test database connectivity
+
+```bash
+psql $DATABASE_URL -c "SELECT 1;"
+```
+
+### Check disk space
+
+```bash
+df -h
+```
+
+### Restart services
+
+```bash
+pm2 restart all
+```

@@ -1,0 +1,133 @@
+---
+title: Events
+description: The event data model, how ingestion works, deduplication, querying, and special message prefixes.
+---
+
+Events are the fundamental data unit in OwlMetry. Every log line, error, user action, metric phase, and funnel step is stored as an event.
+
+## Event structure
+
+The full event schema, as defined in the Node SDK's `LogEvent` type and the database schema:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Server-assigned row ID |
+| `client_event_id` | UUID | Client-generated ID, used for deduplication |
+| `session_id` | UUID | Generated once per `Owl.configure()` call; represents one server process or app session |
+| `user_id` | string | Optional. Set by `Owl.setUser()` or `Owl.withUser()` |
+| `level` | `info` \| `debug` \| `warn` \| `error` | Log severity |
+| `message` | string | The log message or special prefix (see below) |
+| `source_module` | string | Auto-detected file path and line number (Node SDK) |
+| `custom_attributes` | `Record<string, string>` | Up to 200 chars per value |
+| `experiments` | `Record<string, string>` | Active experiment assignments at the time of the event |
+| `environment` | `ios` \| `ipados` \| `macos` \| `android` \| `web` \| `backend` | Runtime environment |
+| `app_version` | string | App version string |
+| `os_version` | string | OS version |
+| `device_model` | string | Device model identifier |
+| `build_number` | string | Build number |
+| `locale` | string | Locale string |
+| `is_dev` | boolean | `true` for development builds |
+| `timestamp` | ISO 8601 | Event time, set by the client |
+| `received_at` | ISO 8601 | Server receipt time |
+
+## Ingesting events
+
+Events are sent to `POST /v1/ingest` using an `owl_client_` key. The request body is:
+
+```json
+{
+  "bundle_id": "com.example.myapp",
+  "events": [
+    {
+      "client_event_id": "550e8400-e29b-41d4-a716-446655440000",
+      "session_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "level": "info",
+      "message": "User logged in",
+      "environment": "ios",
+      "app_version": "2.1.0",
+      "is_dev": false,
+      "timestamp": "2026-03-23T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Batch limit:** Up to 100 events per request.
+
+**Compression:** The server accepts `Content-Encoding: gzip`. The Node SDK automatically compresses payloads over 512 bytes.
+
+**Timestamp validation:** Timestamps cannot be more than 5 minutes in the future or more than 30 days in the past.
+
+## Deduplication
+
+If you provide a `client_event_id`, the server deduplicates against events ingested in the last 48 hours for the same app. Duplicates are silently skipped — they are not counted in `rejected`.
+
+The response tells you exactly how many were accepted and how many were rejected:
+
+```json
+{
+  "accepted": 98,
+  "rejected": 2,
+  "errors": [
+    { "index": 5, "message": "events[5]: level must be one of info, debug, warn, error" }
+  ]
+}
+```
+
+## Special message prefixes
+
+Certain message patterns trigger dual-writes to specialized tables for metrics and funnels:
+
+| Prefix | Table | Example |
+|--------|-------|---------|
+| `track:<step>` | `funnel_events` | `track:signup-completed` |
+| `metric:<slug>:start` | `metric_events` | `metric:api-request:start` |
+| `metric:<slug>:complete` | `metric_events` | `metric:api-request:complete` |
+| `metric:<slug>:fail` | `metric_events` | `metric:api-request:fail` |
+| `metric:<slug>:cancel` | `metric_events` | `metric:api-request:cancel` |
+| `metric:<slug>:record` | `metric_events` | `metric:cache-hit:record` |
+
+You never write these prefixes directly. The SDK methods `Owl.track()`, `Owl.startOperation()`, and `Owl.recordMetric()` emit them automatically.
+
+## Querying events
+
+Query events with `GET /v1/events`. The endpoint supports cursor-based pagination and the following filters:
+
+| Parameter | Description |
+|-----------|-------------|
+| `app_id` | Filter to a specific app |
+| `project_id` | Filter to all apps within a project |
+| `level` | `info`, `debug`, `warn`, or `error` |
+| `since` | ISO 8601 timestamp — only events after this time |
+| `until` | ISO 8601 timestamp — only events before this time |
+| `user_id` | Filter to a specific user |
+| `session_id` | Filter to a specific session |
+| `environment` | Filter by runtime environment |
+| `screen_name` | Filter by screen name (mobile apps) |
+| `cursor` | Timestamp cursor for pagination |
+| `limit` | Number of events per page |
+
+<CodeGroup>
+```bash CLI
+# Last hour of errors
+owlmetry events --since 1h --level error
+
+# Events for a specific user
+owlmetry events --app <app-id> --user-id user_123
+
+# Full details for one event
+owlmetry events view <event-id>
+
+# Investigate: events ±10 minutes around an incident
+owlmetry investigate <event-id> --window 10
+```
+
+```bash API
+curl "https://api.yourdomain.com/v1/events?app_id=<id>&level=error&since=2026-03-23T00:00:00Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+</CodeGroup>
+
+## Storage and pruning
+
+Events are stored in a monthly-partitioned Postgres table. Each month gets its own partition, which Postgres can prune independently. If you set `MAX_DATABASE_SIZE_GB`, OwlMetry drops the oldest partition when the database exceeds the limit.

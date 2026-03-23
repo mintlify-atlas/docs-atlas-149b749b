@@ -1,0 +1,120 @@
+---
+title: "List & Retrieve Apps"
+description: "List all apps your team can access, or fetch a single app by ID."
+---
+
+## List apps
+
+`GET /v1/apps`
+
+**Auth:** Agent key (`apps:read`) or JWT
+
+Returns all non-deleted apps belonging to the teams your credentials can access.
+
+### Query parameters
+
+<ParamField query="team_id" type="string">
+  Scope results to a single team. Supplying a `team_id` you are not a member of
+  returns an empty array rather than a 403.
+</ParamField>
+
+### Response
+
+<ResponseField name="apps" type="array">
+  List of app objects.
+  <Expandable title="App object">
+    <ResponseField name="id" type="string">Unique app UUID.</ResponseField>
+    <ResponseField name="team_id" type="string">Owning team UUID.</ResponseField>
+    <ResponseField name="project_id" type="string">Parent project UUID.</ResponseField>
+    <ResponseField name="name" type="string">App name.</ResponseField>
+    <ResponseField name="platform" type="string">`apple` | `android` | `web` | `backend`</ResponseField>
+    <ResponseField name="bundle_id" type="string | null">
+      Bundle or package identifier (e.g. `com.example.myapp`). `null` for
+      backend apps.
+    </ResponseField>
+    <ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  The `client_key` field is never returned by list or get endpoints. Retrieve
+  it from the dashboard or from the create response (shown once only).
+</Note>
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/apps \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json
+{
+  "apps": [
+    {
+      "id": "a9b8c7d6-0000-0000-0000-000000000042",
+      "team_id": "t1b2c3d4-0000-0000-0000-000000000099",
+      "project_id": "a1b2c3d4-0000-0000-0000-000000000001",
+      "name": "iOS App",
+      "platform": "apple",
+      "bundle_id": "com.example.myapp",
+      "created_at": "2025-01-16T08:30:00.000Z"
+    },
+    {
+      "id": "b7c6d5e4-0000-0000-0000-000000000043",
+      "team_id": "t1b2c3d4-0000-0000-0000-000000000099",
+      "project_id": "a1b2c3d4-0000-0000-0000-000000000001",
+      "name": "API Server",
+      "platform": "backend",
+      "bundle_id": null,
+      "created_at": "2025-01-17T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## Get an app
+
+`GET /v1/apps/:id`
+
+**Auth:** Agent key (`apps:read`) or JWT
+
+Fetches a single app by UUID.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The app UUID.
+</ParamField>
+
+### Response
+
+Returns a single app object with the same fields as those listed in the array
+above.
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/apps/a9b8c7d6-0000-0000-0000-000000000042 \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json
+{
+  "id": "a9b8c7d6-0000-0000-0000-000000000042",
+  "team_id": "t1b2c3d4-0000-0000-0000-000000000099",
+  "project_id": "a1b2c3d4-0000-0000-0000-000000000001",
+  "name": "iOS App",
+  "platform": "apple",
+  "bundle_id": "com.example.myapp",
+  "created_at": "2025-01-16T08:30:00.000Z"
+}
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|--------|
+| `404`  | App not found or not accessible to your credentials. |

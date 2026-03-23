@@ -1,0 +1,152 @@
+---
+title: 'CLI setup'
+description: 'Install the OwlMetry CLI, authenticate, and configure your credentials.'
+keywords: ['cli', 'install', 'setup', 'authentication', 'api key', 'config']
+---
+
+## Install
+
+```bash
+npm install -g @owlmetry/cli
+```
+
+**Requires Node.js 20 or later.**
+
+Verify the installation:
+
+```bash
+owlmetry --version
+```
+
+## Authentication flow
+
+The recommended way to authenticate is the email verification flow. This is fully non-interactive — all input is passed via flags, so an AI agent can drive the entire process.
+
+<Steps>
+  <Step title="Send a verification code">
+    ```bash
+    owlmetry auth send-code --email you@example.com
+    ```
+
+    This calls the OwlMetry API and sends a 6-digit code to your email address. If you're running a self-hosted instance without Resend configured, the code appears in your server logs instead.
+  </Step>
+  <Step title="Verify the code and save credentials">
+    ```bash
+    owlmetry auth verify --email you@example.com --code 847291
+    ```
+
+    On success, this:
+    - Provisions an agent API key (`owl_agent_...`) for your account
+    - Saves the key and endpoint to `~/.owlmetry/config.json`
+    - Sets the authenticated team as the active profile
+
+    For new users, the server also automatically creates a team, a project, and a backend app. You can start querying immediately after this step.
+  </Step>
+  <Step title="Confirm authentication">
+    ```bash
+    owlmetry whoami
+    ```
+
+    This prints your team name, key type, and configured profiles.
+  </Step>
+</Steps>
+
+<Note>
+If you belong to multiple teams, `auth verify` returns a list of team IDs. Re-run the command with `--team-id <id>` to select the team you want. Each team is stored as a separate profile in your config.
+</Note>
+
+## Manual setup with an existing API key
+
+If you already have an agent API key (`owl_agent_...`), skip the email flow and configure the CLI directly:
+
+```bash
+owlmetry setup --endpoint https://api.owlmetry.com --api-key owl_agent_...
+```
+
+For self-hosted instances, replace the endpoint with your server URL:
+
+```bash
+owlmetry setup \
+  --endpoint https://api.yourdomain.com \
+  --api-key owl_agent_... \
+  --ingest-endpoint https://ingest.yourdomain.com
+```
+
+`setup` validates the URL, calls `whoami` to confirm connectivity, and writes the config to `~/.owlmetry/config.json`.
+
+## Config file
+
+All credentials are stored in `~/.owlmetry/config.json`. The file is created automatically on first authentication.
+
+```json
+{
+  "endpoint": "https://api.owlmetry.com",
+  "ingest_endpoint": "https://ingest.owlmetry.com",
+  "active_team": "team_abc123",
+  "teams": {
+    "team_abc123": {
+      "api_key": "owl_agent_...",
+      "team_name": "Acme Corp",
+      "team_slug": "acme-corp"
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `endpoint` | OwlMetry API server URL. Used by the CLI for all management and query requests. |
+| `ingest_endpoint` | URL where SDKs send events. Saved here so it can be read by your SDK integration. |
+| `active_team` | Team ID of the currently active profile. |
+| `teams` | Map of team ID → profile. Supports multiple teams. |
+
+<Warning>
+Never commit `~/.owlmetry/config.json` to version control. It contains your agent API key.
+</Warning>
+
+## Environment variable overrides
+
+You can override the config file values with environment variables. This is useful in CI environments or when you don't want credentials on disk.
+
+| Variable | Description |
+|----------|-------------|
+| `OWLMETRY_ENDPOINT` | Overrides `endpoint` from the config file |
+| `OWLMETRY_API_KEY` | Overrides the active team's `api_key` |
+| `OWLMETRY_INGEST_ENDPOINT` | Overrides `ingest_endpoint` from the config file |
+
+Command-line flags take precedence over environment variables, which take precedence over the config file:
+
+```bash
+# All three of these override the saved config
+export OWLMETRY_ENDPOINT=https://api.staging.example.com
+export OWLMETRY_API_KEY=owl_agent_staging...
+
+owlmetry projects
+```
+
+## Multiple team profiles
+
+The CLI supports multiple team profiles in a single config file. Each team is keyed by its team ID.
+
+```bash
+# List all configured profiles
+owlmetry switch
+
+# Switch the active profile
+owlmetry switch acme-corp
+
+# Use a specific team for a single command without switching
+owlmetry projects --team acme-corp
+```
+
+To add a second team profile, run `auth verify` again with the second team's credentials. The new team is added to the `teams` map and set as the active profile.
+
+## Verify setup
+
+After authenticating, confirm everything is working:
+
+```bash
+owlmetry projects
+```
+
+This lists all projects visible to your API key. If you authenticated as a new user, you'll see the automatically created project.

@@ -1,0 +1,133 @@
+---
+title: "GET & PATCH /v1/auth/me"
+description: "Retrieve or update the current user's profile."
+---
+
+## GET /v1/auth/me
+
+`GET /v1/auth/me`
+
+**Auth:** JWT (Bearer token or `token` cookie)
+
+Returns the current user's profile and all team memberships.
+
+<Note>
+  This endpoint only accepts JWT (user) auth. Requests authenticated with an API key receive `403 Forbidden`.
+</Note>
+
+### Response
+
+<ResponseField name="user" type="object">
+  The authenticated user's profile.
+
+  <Expandable title="user fields">
+    <ResponseField name="user.id" type="string">User UUID.</ResponseField>
+    <ResponseField name="user.email" type="string">Email address.</ResponseField>
+    <ResponseField name="user.name" type="string">Display name.</ResponseField>
+    <ResponseField name="user.created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+    <ResponseField name="user.updated_at" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="teams" type="array">
+  All teams the user is a member of.
+
+  <Expandable title="teams[] fields">
+    <ResponseField name="teams[].id" type="string">Team UUID.</ResponseField>
+    <ResponseField name="teams[].name" type="string">Team display name.</ResponseField>
+    <ResponseField name="teams[].slug" type="string">URL-safe team identifier.</ResponseField>
+    <ResponseField name="teams[].role" type="string">Role in this team: `owner`, `admin`, or `member`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `403`  | `"Only users can access this endpoint"` — request was made with an API key. |
+| `404`  | `"User not found"` — the JWT references a deleted user. |
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/auth/me \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "user": {
+    "id": "usr_01hx...",
+    "email": "alice@example.com",
+    "name": "Alice",
+    "created_at": "2024-03-01T10:00:00.000Z",
+    "updated_at": "2024-03-01T10:00:00.000Z"
+  },
+  "teams": [
+    {
+      "id": "tm_01hx...",
+      "name": "Alice's Team",
+      "slug": "alice-01hx",
+      "role": "owner"
+    }
+  ]
+}
+```
+
+---
+
+## PATCH /v1/auth/me
+
+`PATCH /v1/auth/me`
+
+**Auth:** JWT (Bearer token or `token` cookie)
+
+Updates the current user's display name.
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  The new display name. Must be a non-empty string.
+</ParamField>
+
+### Response
+
+<ResponseField name="user" type="object">
+  The updated user profile (same shape as `GET /v1/auth/me`).
+
+  <Expandable title="user fields">
+    <ResponseField name="user.id" type="string">User UUID.</ResponseField>
+    <ResponseField name="user.email" type="string">Email address.</ResponseField>
+    <ResponseField name="user.name" type="string">Updated display name.</ResponseField>
+    <ResponseField name="user.created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+    <ResponseField name="user.updated_at" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"At least one field to update is required"` — `name` was not provided. |
+| `403`  | `"Only users can update their profile"` — request was made with an API key. |
+
+### Example
+
+```bash
+curl -X PATCH https://api.yourdomain.com/v1/auth/me \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice Nguyen"}'
+```
+
+```json Response
+{
+  "user": {
+    "id": "usr_01hx...",
+    "email": "alice@example.com",
+    "name": "Alice Nguyen",
+    "created_at": "2024-03-01T10:00:00.000Z",
+    "updated_at": "2024-06-15T14:32:00.000Z"
+  }
+}
+```

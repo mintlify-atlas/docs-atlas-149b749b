@@ -1,0 +1,242 @@
+---
+title: "Team Members"
+description: "List members, change roles, remove members, and view a member's agent keys."
+---
+
+## GET /v1/teams/:teamId/members
+
+`GET /v1/teams/:teamId/members`
+
+**Auth:** JWT (any team member)
+
+Returns all current members of the team.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team.
+</ParamField>
+
+### Response
+
+<ResponseField name="members" type="array">
+  <Expandable title="members[] fields">
+    <ResponseField name="user_id" type="string">User UUID.</ResponseField>
+    <ResponseField name="email" type="string">Email address.</ResponseField>
+    <ResponseField name="name" type="string">Display name.</ResponseField>
+    <ResponseField name="role" type="string">Role in the team: `owner`, `admin`, or `member`.</ResponseField>
+    <ResponseField name="joined_at" type="string">ISO 8601 timestamp when the user joined.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/teams/tm_01hx.../members \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "members": [
+    {
+      "user_id": "usr_01hx...",
+      "email": "alice@example.com",
+      "name": "Alice",
+      "role": "owner",
+      "joined_at": "2024-06-01T10:00:00.000Z"
+    },
+    {
+      "user_id": "usr_02hx...",
+      "email": "bob@example.com",
+      "name": "Bob",
+      "role": "member",
+      "joined_at": "2024-06-10T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## PATCH /v1/teams/:teamId/members/:userId
+
+`PATCH /v1/teams/:teamId/members/:userId`
+
+**Auth:** JWT (admin or owner)
+
+Changes a member's role. Role hierarchy rules apply:
+
+- Owners can promote or demote any member, including promoting to `owner`.
+- Admins can only change the roles of members with a lower role (i.e. `member`).
+- You cannot change your own role.
+- You cannot demote the last owner of a team.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team.
+</ParamField>
+
+<ParamField path="userId" type="string" required>
+  UUID of the member whose role you want to change.
+</ParamField>
+
+### Request body
+
+<ParamField body="role" type="string" required>
+  New role to assign. One of `"owner"`, `"admin"`, or `"member"`.
+</ParamField>
+
+### Response
+
+<ResponseField name="user_id" type="string">
+  UUID of the updated member.
+</ResponseField>
+
+<ResponseField name="role" type="string">
+  The member's new role.
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"A valid role is required"` |
+| `400`  | `"Cannot change your own role"` |
+| `400`  | `"Cannot demote the last owner"` |
+| `403`  | `"Only users can change member roles"` or insufficient role |
+| `403`  | `"Only owners can promote members to owner"` |
+| `403`  | `"Cannot change the role of a member with equal or higher role"` |
+| `404`  | `"Member not found"` |
+
+### Example
+
+```bash
+curl -X PATCH https://api.yourdomain.com/v1/teams/tm_01hx.../members/usr_02hx... \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "admin"}'
+```
+
+```json Response
+{
+  "user_id": "usr_02hx...",
+  "role": "admin"
+}
+```
+
+---
+
+## DELETE /v1/teams/:teamId/members/:userId
+
+`DELETE /v1/teams/:teamId/members/:userId`
+
+**Auth:** JWT (admin or owner — or any member removing themselves)
+
+Removes a member from the team. A member can remove themselves (leave the team) without elevated permissions. Admins can only remove members with a lower role.
+
+Pass `?revoke_agent_keys=true` to also soft-delete all agent API keys the removed user created for this team.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team.
+</ParamField>
+
+<ParamField path="userId" type="string" required>
+  UUID of the member to remove.
+</ParamField>
+
+### Query parameters
+
+<ParamField query="revoke_agent_keys" type="boolean">
+  When `true`, all agent keys created by the removed user for this team are revoked simultaneously. Defaults to `false`.
+</ParamField>
+
+### Response
+
+<ResponseField name="removed" type="boolean">
+  Always `true` on success.
+</ResponseField>
+
+<ResponseField name="revoked_agent_keys" type="number">
+  Number of agent keys that were revoked (0 if `revoke_agent_keys` was not set to `true`).
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"Transfer ownership before leaving — you are the sole owner"` — last owner cannot leave. |
+| `403`  | `"Only users can remove team members"` or insufficient role |
+| `403`  | `"Cannot remove a member with equal or higher role"` |
+| `404`  | `"Member not found"` |
+
+### Example
+
+```bash
+# Remove a member and revoke their agent keys
+curl -X DELETE "https://api.yourdomain.com/v1/teams/tm_01hx.../members/usr_02hx...?revoke_agent_keys=true" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "removed": true,
+  "revoked_agent_keys": 2
+}
+```
+
+---
+
+## GET /v1/teams/:teamId/members/:userId/agent-keys
+
+`GET /v1/teams/:teamId/members/:userId/agent-keys`
+
+**Auth:** JWT (admin or owner — or the member viewing their own keys)
+
+Lists all active agent keys created by the specified member in this team. Any member can view their own keys; admins and owners can view any member's keys.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team.
+</ParamField>
+
+<ParamField path="userId" type="string" required>
+  UUID of the member whose agent keys to list.
+</ParamField>
+
+### Response
+
+<ResponseField name="keys" type="array">
+  <Expandable title="keys[] fields">
+    <ResponseField name="id" type="string">Key UUID.</ResponseField>
+    <ResponseField name="name" type="string">Key label.</ResponseField>
+    <ResponseField name="key_prefix" type="string">Non-secret prefix for identification.</ResponseField>
+    <ResponseField name="permissions" type="array">Permissions granted to this key.</ResponseField>
+    <ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/teams/tm_01hx.../members/usr_01hx.../agent-keys \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "keys": [
+    {
+      "id": "key_01hx...",
+      "name": "CLI Agent Key",
+      "key_prefix": "owl_agent_abc123",
+      "permissions": ["events:read", "metrics:read", "metrics:write"],
+      "created_at": "2024-06-01T10:00:00.000Z"
+    }
+  ]
+}
+```

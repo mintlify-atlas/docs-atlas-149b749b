@@ -1,0 +1,388 @@
+---
+title: "Node.js SDK"
+description: "Zero-dependency Node.js SDK for OwlMetry (@owlmetry/node). Logging, metrics, funnels, and A/B experiments for any Node.js service."
+---
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @owlmetry/node
+```
+
+```bash pnpm
+pnpm add @owlmetry/node
+```
+
+```bash yarn
+yarn add @owlmetry/node
+```
+
+</CodeGroup>
+
+The SDK has zero runtime dependencies and works with any Node.js framework.
+
+---
+
+## Configuration
+
+Call `Owl.configure()` once at server startup, before any logging or tracking calls.
+
+```typescript
+import { Owl } from '@owlmetry/node';
+
+Owl.configure({
+  endpoint: 'https://ingest.owlmetry.com',
+  apiKey: 'owl_client_xxx',
+  serviceName: 'api-server',
+  appVersion: '1.2.0',
+  isDev: false,
+  debug: false,
+  flushIntervalMs: 5000,
+  flushThreshold: 20,
+  maxBufferSize: 10000,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `endpoint` | `string` | Yes | — | Your OwlMetry server URL. Trailing slash is stripped automatically. |
+| `apiKey` | `string` | Yes | — | Client API key. Must start with `owl_client_`. |
+| `serviceName` | `string` | No | `"unknown"` | Human-readable service name used for logging and debugging. Not sent as a bundle ID. |
+| `appVersion` | `string` | No | — | Application version string, attached to every event as `app_version`. |
+| `isDev` | `boolean` | No | `NODE_ENV !== "production"` | Marks events as development builds. |
+| `debug` | `boolean` | No | `false` | Logs internal SDK errors to `console.error`. |
+| `flushIntervalMs` | `number` | No | `5000` | How often (ms) the buffer is flushed to the server. |
+| `flushThreshold` | `number` | No | `20` | Number of buffered events that triggers an immediate flush. |
+| `maxBufferSize` | `number` | No | `10000` | Maximum events held in memory. When exceeded, the oldest event is dropped. |
+
+<Note>
+  Each `Owl.configure()` call generates a new `session_id` UUID. If you call it more than once (e.g. in tests), the previous transport is shut down gracefully before the new one starts.
+</Note>
+
+---
+
+## Logging
+
+Four log levels map directly to the `LogLevel` type: `info`, `debug`, `warn`, and `error`.
+
+```typescript
+Owl.info('User signed up', { plan: 'pro', referrer: 'homepage' });
+Owl.debug('Cache miss', { key: 'user:123:profile' });
+Owl.warn('Rate limit approaching', { endpoint: '/v1/ingest', remaining: '5' });
+Owl.error('Payment failed', { orderId: 'abc123', reason: 'insufficient_funds' });
+```
+
+**Method signatures:**
+
+```typescript
+Owl.info(message: string, attrs?: Record<string, unknown>): void
+Owl.debug(message: string, attrs?: Record<string, unknown>): void
+Owl.warn(message: string, attrs?: Record<string, unknown>): void
+Owl.error(message: string, attrs?: Record<string, unknown>): void
+```
+
+<Tip>
+  Attribute values are coerced to strings and truncated to **200 characters**. The `source_module` field is captured automatically from the call-site stack frame — you don't need to set it.
+</Tip>
+
+None of these methods ever throw. When `debug: true`, internal errors are printed to `console.error`.
+
+---
+
+## Scoped Logger
+
+Use `Owl.withUser()` to create a `ScopedOwl` instance that automatically attaches a `user_id` to every event it emits.
+
+```typescript
+const owl = Owl.withUser('user_123');
+
+owl.info('Processing order', { orderId: 'ord_456' });
+owl.error('Payment declined', { gateway: 'stripe' });
+owl.warn('Retry attempt', { attempt: '2' });
+owl.debug('Cache miss', { key: 'user:123' });
+```
+
+`ScopedOwl` exposes the same `info`, `debug`, `warn`, `error`, `track`, `startOperation`, and `recordMetric` methods as `Owl` itself — all events automatically carry the `user_id` you provided.
+
+```typescript
+const owl = Owl.withUser('user_123');
+
+// Funnel step scoped to a user
+owl.track('checkout-started', { cartValue: '49.99' });
+
+// Operation scoped to a user
+const op = owl.startOperation('payment-processing');
+try {
+  await processPayment();
+  op.complete({ gateway: 'stripe' });
+} catch (err) {
+  op.fail(err.message);
+}
+```
+
+---
+
+## Funnel Tracking
+
+Track named funnel steps with `Owl.track()`. Internally this sends an `info`-level event with the message `track:<stepName>`.
+
+```typescript
+Owl.track('signup-started');
+Owl.track('email-verified', { method: 'magic-link' });
+Owl.track('signup-completed', { plan: 'pro' });
+```
+
+**Signature:**
+
+```typescript
+Owl.track(stepName: string, attributes?: Record<string, string>): void
+```
+
+---
+
+## Structured Metrics
+
+### Lifecycle operations
+
+Use `Owl.startOperation()` to track work that has a measurable duration. The returned `Operation` object records start time and emits structured events at each lifecycle stage.
+
+```typescript
+import { Owl, Operation } from '@owlmetry/node';
+
+const op = Owl.startOperation('api-request', { endpoint: '/v1/users' });
+
+try {
+  const result = await fetchUsers();
+  op.complete({ count: String(result.length) });
+} catch (err) {
+  op.fail(err.message, { endpoint: '/v1/users' });
+}
+
+// You can also cancel an operation
+if (aborted) {
+  op.cancel({ reason: 'user-navigated-away' });
+}
+```
+
+**`Operation` class:**
+
+```typescript
+class Operation {
+  readonly trackingId: string;          // UUID linking start/complete/fail/cancel events
+
+  complete(attrs?: Record<string, unknown>): void   // Emits metric:<slug>:complete at info level
+  fail(error: string, attrs?: Record<string, unknown>): void  // Emits metric:<slug>:fail at error level
+  cancel(attrs?: Record<string, unknown>): void    // Emits metric:<slug>:cancel at info level
+}
+```
+
+`duration_ms` and `tracking_id` are added automatically to all terminal events (`complete`, `fail`, `cancel`).
+
+<Note>
+  Metric slugs must contain only lowercase letters, numbers, and hyphens (e.g. `"api-request"`, `"photo-conversion"`). Invalid characters are auto-corrected and a warning is logged when `debug: true`.
+</Note>
+
+### Single-shot metrics
+
+For point-in-time measurements that don't need a start/end lifecycle:
+
+```typescript
+Owl.recordMetric('cache-hit', { key: 'user:123:profile' });
+Owl.recordMetric('queue-depth', { depth: '47' });
+```
+
+**Signature:**
+
+```typescript
+Owl.recordMetric(metric: string, attrs?: Record<string, unknown>): void
+```
+
+---
+
+## A/B Experiments
+
+The SDK provides lightweight client-side experiment assignment. Variants are picked randomly on the first call and persisted to `~/.owlmetry/experiments.json`. All subsequent events automatically include the active experiment assignments.
+
+```typescript
+// Get (or assign) a variant — random on first call, stable thereafter
+const variant = Owl.getVariant('onboarding-flow', ['control', 'streamlined']);
+
+if (variant === 'streamlined') {
+  // Show new onboarding
+} else {
+  // Show existing onboarding
+}
+
+// Force a specific variant (e.g. from a server-side assignment or feature flag)
+Owl.setExperiment('onboarding-flow', 'streamlined');
+
+// Reset all assignments (e.g. in tests or on logout)
+Owl.clearExperiments();
+```
+
+**Signatures:**
+
+```typescript
+Owl.getVariant(name: string, options: string[]): string
+Owl.setExperiment(name: string, variant: string): void
+Owl.clearExperiments(): void
+```
+
+<Tip>
+  Once a variant is assigned, calling `getVariant()` again with different `options` will return the already-stored variant. The `options` array is only used on the very first call.
+</Tip>
+
+---
+
+## Transport
+
+The SDK buffers events in memory and sends them in batches:
+
+- **Flush interval:** every **5 seconds** (configurable via `flushIntervalMs`)
+- **Batch trigger:** when the buffer reaches **20 events** (configurable via `flushThreshold`)
+- **Batch size:** up to **20 events** per HTTP request
+- **Gzip compression:** payloads larger than **512 bytes** are automatically gzip-compressed
+- **Retries:** up to **5 attempts** with exponential backoff (1s, 2s, 4s, 8s, 16s, capped at 30s). Client errors (4xx except 429) are not retried.
+- **Session ID:** a new `session_id` UUID is generated on each `Owl.configure()` call
+- **Timer behavior:** the flush timer is `unref()`-ed so it does not prevent the Node.js process from exiting naturally
+
+---
+
+## Serverless Environments
+
+In short-lived environments like Firebase Cloud Functions or AWS Lambda, the process may freeze or terminate before the flush timer fires — losing buffered events. Use `Owl.wrapHandler()` to flush automatically after every invocation.
+
+<CodeGroup>
+
+```typescript Firebase Cloud Functions
+import { onRequest } from 'firebase-functions/v2/https';
+import { Owl } from '@owlmetry/node';
+
+Owl.configure({
+  endpoint: 'https://ingest.owlmetry.com',
+  apiKey: 'owl_client_xxx',
+});
+
+export const myFunction = onRequest(
+  Owl.wrapHandler(async (req, res) => {
+    Owl.info('Function invoked', { path: req.path });
+    res.send('OK');
+  }),
+);
+```
+
+```typescript AWS Lambda
+import { Owl } from '@owlmetry/node';
+
+Owl.configure({
+  endpoint: 'https://ingest.owlmetry.com',
+  apiKey: 'owl_client_xxx',
+});
+
+export const handler = Owl.wrapHandler(async (event) => {
+  Owl.info('Lambda invoked', { requestId: event.requestContext?.requestId });
+  return { statusCode: 200, body: 'OK' };
+});
+```
+
+</CodeGroup>
+
+**Signature:**
+
+```typescript
+Owl.wrapHandler<TArgs extends unknown[], TReturn>(
+  handler: (...args: TArgs) => Promise<TReturn>
+): (...args: TArgs) => Promise<TReturn>
+```
+
+<Warning>
+  Do **not** call `Owl.shutdown()` inside a serverless handler. `shutdown()` destroys the transport entirely, which breaks warm container reuse. `wrapHandler()` only flushes the buffer and keeps the SDK ready for the next invocation.
+</Warning>
+
+The SDK also registers a `process.on('beforeExit')` safety net that flushes any remaining events when the Node.js event loop drains — catching events that slip through without `wrapHandler`.
+
+---
+
+## Manual Flush and Shutdown
+
+For scripts or batch jobs where you control the process lifecycle:
+
+```typescript
+// Flush buffered events without shutting down
+await Owl.flush();
+
+// Flush all events and tear down the transport
+// (call in long-running processes on graceful shutdown)
+await Owl.shutdown();
+```
+
+<Note>
+  In long-running servers (Express, Fastify, etc.) you typically don't need to call `shutdown()` explicitly — the `beforeExit` hook handles the final flush. Call it during a graceful `SIGTERM` handler if you need a guaranteed clean exit.
+</Note>
+
+---
+
+## TypeScript Types
+
+All public types are re-exported from `@owlmetry/node`:
+
+```typescript
+import type { OwlConfiguration, LogLevel, LogEvent, Operation } from '@owlmetry/node';
+```
+
+### `OwlConfiguration`
+
+```typescript
+interface OwlConfiguration {
+  endpoint: string;
+  apiKey: string;
+  serviceName?: string;
+  appVersion?: string;
+  debug?: boolean;
+  isDev?: boolean;
+  flushIntervalMs?: number;
+  flushThreshold?: number;
+  maxBufferSize?: number;
+}
+```
+
+### `LogLevel`
+
+```typescript
+type LogLevel = "info" | "debug" | "warn" | "error";
+```
+
+### `LogEvent`
+
+```typescript
+interface LogEvent {
+  client_event_id: string;
+  session_id: string;
+  user_id?: string;
+  level: LogLevel;
+  source_module?: string;
+  message: string;
+  custom_attributes?: Record<string, string>;
+  experiments?: Record<string, string>;
+  environment: "backend";
+  app_version?: string;
+  is_dev?: boolean;
+  timestamp: string;  // ISO 8601
+}
+```
+
+### `Operation`
+
+```typescript
+class Operation {
+  readonly trackingId: string;
+
+  complete(attrs?: Record<string, unknown>): void;
+  fail(error: string, attrs?: Record<string, unknown>): void;
+  cancel(attrs?: Record<string, unknown>): void;
+}
+```

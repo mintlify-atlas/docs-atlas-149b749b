@@ -1,0 +1,166 @@
+---
+title: "Query audit logs"
+description: "Query the team audit log with cursor-based pagination and filters for actor, resource type, and action."
+---
+
+`GET /v1/teams/:teamId/audit-logs`
+
+**Auth:** Agent key (`audit_logs:read`) or JWT (admin or owner role required)
+
+Returns a paginated list of audit log entries for a team, ordered newest first. Use filters to narrow results by actor, resource, or action type. Cursor-based pagination ensures stable results even as new entries are written.
+
+JWT users must hold at least the `admin` role in the team. Agent keys with the `audit_logs:read` permission may also access this endpoint.
+
+## Path parameters
+
+<ParamField path="teamId" type="string" required>
+  The team ID.
+</ParamField>
+
+## Query parameters
+
+<ParamField query="resource_type" type="string">
+  Filter to a specific resource type. Common values: `app`, `project`, `api_key`, `team`, `team_member`, `invitation`, `metric_definition`, `funnel_definition`, `user`.
+</ParamField>
+
+<ParamField query="resource_id" type="string">
+  Filter to a specific resource by its ID.
+</ParamField>
+
+<ParamField query="actor_id" type="string">
+  Filter to actions performed by a specific actor (user ID or API key ID).
+</ParamField>
+
+<ParamField query="action" type="string">
+  Filter by action type. One of `create`, `update`, or `delete`.
+</ParamField>
+
+<ParamField query="since" type="string">
+  Return entries at or after this time. ISO 8601 datetime.
+</ParamField>
+
+<ParamField query="until" type="string">
+  Return entries at or before this time. ISO 8601 datetime.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Page size. Min `1`, max `200`. Defaults to `50`.
+</ParamField>
+
+<ParamField query="cursor" type="string">
+  Pagination cursor returned by the previous response. Pass this to fetch the next page.
+
+  The cursor encodes `timestamp|id`. Treat it as opaque — do not construct or parse it manually.
+</ParamField>
+
+## Response
+
+<ResponseField name="audit_logs" type="array">
+  Page of audit log entries, ordered newest first.
+
+  <Expandable title="Audit log entry fields">
+    <ResponseField name="id" type="string">
+      Unique audit log entry ID.
+    </ResponseField>
+    <ResponseField name="team_id" type="string">
+      The team this entry belongs to.
+    </ResponseField>
+    <ResponseField name="actor_type" type="string">
+      Who performed the action: `user`, `api_key`, or `system`.
+    </ResponseField>
+    <ResponseField name="actor_id" type="string">
+      ID of the actor — a user ID, API key ID, or `system`.
+    </ResponseField>
+    <ResponseField name="action" type="string">
+      The action performed: `create`, `update`, or `delete`.
+    </ResponseField>
+    <ResponseField name="resource_type" type="string">
+      The type of resource that was acted on (e.g. `app`, `metric_definition`).
+    </ResponseField>
+    <ResponseField name="resource_id" type="string">
+      ID of the resource that was acted on.
+    </ResponseField>
+    <ResponseField name="changes" type="object | null">
+      Field-level diff for `update` actions. Each key is a field name mapping to `{ before, after }`. `null` for `create` and `delete` actions.
+    </ResponseField>
+    <ResponseField name="metadata" type="object | null">
+      Supplementary context recorded at the time of the action (e.g. `{ slug: "startup-time" }` for a metric creation). Shape varies by resource type.
+    </ResponseField>
+    <ResponseField name="timestamp" type="string">
+      ISO 8601 timestamp of when the action occurred.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cursor" type="string | null">
+  Pass this value as `cursor` on your next request to fetch the next page. `null` when there are no more results.
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  `true` when additional pages are available.
+</ResponseField>
+
+## Examples
+
+**List all audit log entries for a team**
+
+```bash
+curl "https://api.yourdomain.com/v1/teams/team_xyz/audit-logs" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "audit_logs": [
+    {
+      "id": "aud_01pq",
+      "team_id": "team_xyz",
+      "actor_type": "user",
+      "actor_id": "usr_42",
+      "action": "create",
+      "resource_type": "app",
+      "resource_id": "app_ios_1",
+      "changes": null,
+      "metadata": { "name": "iOS App", "platform": "apple" },
+      "timestamp": "2025-03-20T11:30:00.000Z"
+    },
+    {
+      "id": "aud_01pr",
+      "team_id": "team_xyz",
+      "actor_type": "user",
+      "actor_id": "usr_42",
+      "action": "update",
+      "resource_type": "metric_definition",
+      "resource_id": "mdef_01j9z",
+      "changes": {
+        "name": { "before": "API Latency", "after": "API Latency v2" },
+        "status": { "before": "active", "after": "paused" }
+      },
+      "metadata": null,
+      "timestamp": "2025-03-19T09:15:00.000Z"
+    }
+  ],
+  "cursor": "2025-03-19T09:15:00.000Z|aud_01pr",
+  "has_more": true
+}
+```
+
+**Filter by resource type and action**
+
+```bash
+curl "https://api.yourdomain.com/v1/teams/team_xyz/audit-logs?resource_type=app&action=create" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+**Paginate to the next page**
+
+```bash
+curl "https://api.yourdomain.com/v1/teams/team_xyz/audit-logs?cursor=2025-03-19T09:15:00.000Z|aud_01pr" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+**CLI equivalent**
+
+```bash
+owlmetry audit-log list --team team_xyz --resource-type app --action create
+```

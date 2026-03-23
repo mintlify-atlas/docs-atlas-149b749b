@@ -1,0 +1,47 @@
+---
+title: "POST /v1/auth/send-code"
+description: "Send an email verification code to begin authentication."
+---
+
+`POST /v1/auth/send-code`
+
+**Auth:** None required
+
+Sends a 6-digit verification code to the provided email address. The code expires after **10 minutes**. You can request at most **5 codes per email per hour**.
+
+<Note>
+  If the server is configured without a `RESEND_API_KEY`, the verification code is printed to the server console instead of being emailed. This is useful during local development.
+</Note>
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  The email address to send the verification code to. Must be a valid email containing `@`.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Confirmation that the code was sent. Value: `"Verification code sent"`.
+</ResponseField>
+
+## Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"Valid email is required"` — email is missing or malformed. |
+| `429`  | `"Too many verification codes requested. Try again later."` — exceeded 5 codes per hour for this email. |
+
+## Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com"}'
+```
+
+```json Response
+{
+  "message": "Verification code sent"
+}
+```

@@ -1,0 +1,248 @@
+---
+title: "Authentication"
+description: "JWT tokens, agent keys, and client keys — when to use each, how to generate them, and how to authenticate requests."
+---
+
+OwlMetry has three authentication mechanisms. The right one to use depends on what is making the request.
+
+<CardGroup cols={3}>
+  <Card title="JWT tokens" icon="cookie">
+    For the web dashboard and user-facing sessions. Stored as HTTP-only cookies. Obtained by verifying an email code.
+  </Card>
+  <Card title="Agent keys" icon="terminal">
+    For the CLI and AI agents. Prefixed `owl_agent_`. Passed as a `Bearer` token. Support fine-grained permission scopes.
+  </Card>
+  <Card title="Client keys" icon="code">
+    For SDKs (event ingest only). Prefixed `owl_client_`. Passed as a `Bearer` token. Scoped to a specific app's bundle ID.
+  </Card>
+</CardGroup>
+
+## JWT tokens
+
+JWT tokens are issued when a user completes the email verification flow through the web dashboard. The server sets an HTTP-only cookie named `token` that the dashboard sends automatically with every request.
+
+- **Lifetime:** 7 days
+- **Storage:** HTTP-only cookie (never exposed to JavaScript)
+- **Used by:** The Next.js web dashboard
+- **Access level:** Determined by the user's role in each team (see [Roles](#roles) below)
+
+You do not need to manage JWT tokens directly unless you are building a custom web client. For programmatic access — agents, scripts, CI pipelines — use an agent key instead.
+
+## Agent keys (`owl_agent_`)
+
+Agent keys are the primary credential for programmatic access. They are prefixed with `owl_agent_` and scoped to a team.
+
+Pass an agent key as a `Bearer` token in the `Authorization` header:
+
+```bash
+curl https://api.yourdomain.com/v1/projects \
+  -H "Authorization: Bearer owl_agent_..."
+```
+
+Agent keys support permission scopes that restrict what the key can do. See [Permission scopes](#permission-scopes) below.
+
+## Client keys (`owl_client_`)
+
+Client keys are for SDKs and are restricted to event ingest endpoints (`POST /v1/ingest` and `POST /v1/identity/claim`). They are prefixed with `owl_client_` and scoped to a specific app.
+
+Pass a client key as a `Bearer` token in the `Authorization` header:
+
+```bash
+curl https://api.yourdomain.com/v1/ingest \
+  -H "Authorization: Bearer owl_client_..." \
+  -H "Content-Type: application/json" \
+  -d '{"events": [...]}'
+```
+
+### Bundle ID validation
+
+Every client key is linked to one app. When your SDK sends a request, it must include an `X-Bundle-ID` header that matches the bundle ID registered for that app. Requests with a mismatched bundle ID are rejected with `403 Forbidden`.
+
+<Warning>
+  If you rotate or transfer a client key to a different app, update the `X-Bundle-ID` value in your SDK configuration to match the new app's bundle ID.
+</Warning>
+
+## Permission scopes
+
+Agent keys can be issued with a subset of permissions to limit what they can access. The following scopes are available:
+
+| Scope | What it grants |
+|-------|----------------|
+| `projects:read` | List and view projects |
+| `projects:write` | Create and update projects |
+| `apps:read` | List and view apps and app users |
+| `apps:write` | Create and update apps |
+| `events:read` | Query and view events |
+| `funnels:read` | List and query funnel definitions and analytics |
+| `funnels:write` | Create and update funnel definitions |
+| `metrics:read` | List and query metric definitions and aggregations |
+| `metrics:write` | Create and update metric definitions |
+| `audit_logs:read` | Query audit log entries |
+
+When a scope is absent, the key receives a `403 Forbidden` response for any endpoint that requires it.
+
+<Note>
+  JWT-authenticated users bypass scope checks. Their access is governed by their team role instead.
+</Note>
+
+## Roles
+
+Team members have one of three roles. Higher roles include all permissions of lower roles.
+
+| Role | Capabilities |
+|------|--------------|
+| `owner` | Full access, including deleting the team |
+| `admin` | Create/update/delete resources; manage members and API keys |
+| `member` | Read-only access to team resources |
+
+Endpoints that require a write operation (create, update, delete) require `admin` or higher. Deleting a team requires `owner`.
+
+## Generating API keys
+
+You generate API keys through the dashboard or directly via the API. Creating a key requires a JWT session and `admin` role or higher on the target team.
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/auth/keys \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Agent Key",
+    "key_type": "agent",
+    "team_id": "<team-id>",
+    "permissions": ["projects:read", "apps:read", "events:read"]
+  }'
+```
+
+The response includes the full key value exactly once. Store it immediately — the server only stores a hash and cannot show it again.
+
+```json
+{
+  "key": "owl_agent_...",
+  "api_key": {
+    "id": "...",
+    "name": "My Agent Key",
+    "key_type": "agent",
+    "key_prefix": "owl_agent_abc",
+    "permissions": ["projects:read", "apps:read", "events:read"],
+    "team_id": "...",
+    "created_at": "2026-03-23T00:00:00.000Z"
+  }
+}
+```
+
+For client keys, provide `key_type: "client"` and an `app_id` instead of `team_id`. Client keys cannot carry permission scopes.
+
+## Agent login flow
+
+The agent login flow lets a CLI or AI agent authenticate and receive an agent key without any interactive prompts. All input is passed as JSON in the request body.
+
+<Steps>
+  <Step title="Request a verification code">
+    Send the user's email address to `POST /v1/auth/send-code`. The server emails a 6-digit code. If no `RESEND_API_KEY` is configured, the code is printed to the server console.
+
+    ```bash
+    curl -X POST https://api.yourdomain.com/v1/auth/send-code \
+      -H "Content-Type: application/json" \
+      -d '{"email": "alice@example.com"}'
+    ```
+
+    ```json
+    { "message": "Verification code sent" }
+    ```
+  </Step>
+
+  <Step title="User retrieves the 6-digit code">
+    The user checks their email (or the server logs in development) and provides the 6-digit code to the agent.
+  </Step>
+
+  <Step title="Exchange the code for an agent key">
+    Send the email and code to `POST /v1/auth/agent-login`. The server validates the code, creates or retrieves the user account, and returns a new agent key.
+
+    For **new users**, the server automatically provisions a team, a project, and a backend app.
+
+    If the user belongs to multiple teams, include `team_id` to specify which team the key should be scoped to.
+
+    ```bash
+    curl -X POST https://api.yourdomain.com/v1/auth/agent-login \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "alice@example.com",
+        "code": "847291"
+      }'
+    ```
+
+    ```json
+    {
+      "api_key": "owl_agent_...",
+      "team": {
+        "id": "...",
+        "name": "Alice's Team",
+        "slug": "alice-s-team-a1b2c3d4"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Use the agent key for all subsequent requests">
+    Store the returned key and pass it as a `Bearer` token on every API request:
+
+    ```bash
+    curl https://api.yourdomain.com/v1/projects \
+      -H "Authorization: Bearer owl_agent_..."
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Verification codes expire after **10 minutes** and can only be used once. A maximum of 5 codes can be requested per email address per hour.
+</Note>
+
+## curl examples
+
+<CodeGroup>
+
+```bash JWT (cookie-based)
+# Step 1: Request a code
+curl -X POST https://api.yourdomain.com/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com"}'
+
+# Step 2: Exchange code for JWT (sets token cookie)
+curl -X POST https://api.yourdomain.com/v1/auth/verify-code \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{"email": "alice@example.com", "code": "847291"}'
+
+# Step 3: Use the cookie on subsequent requests
+curl https://api.yourdomain.com/v1/auth/me \
+  -b cookies.txt
+```
+
+```bash Agent key
+# Use an agent key as a Bearer token
+curl https://api.yourdomain.com/v1/events \
+  -H "Authorization: Bearer owl_agent_..."
+
+# Query projects
+curl https://api.yourdomain.com/v1/projects \
+  -H "Authorization: Bearer owl_agent_..."
+```
+
+```bash Client key
+# Ingest events (bundle ID must match the app's registered bundle ID)
+curl -X POST https://api.yourdomain.com/v1/ingest \
+  -H "Authorization: Bearer owl_client_..." \
+  -H "Content-Type: application/json" \
+  -H "X-Bundle-ID: com.example.myapp" \
+  -d '{
+    "events": [
+      {
+        "name": "user_signed_up",
+        "level": "info",
+        "timestamp": "2026-03-23T12:00:00.000Z"
+      }
+    ]
+  }'
+```
+
+</CodeGroup>

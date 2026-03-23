@@ -1,122 +1,154 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "OwlMetry",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#9c9c9d",
+    "light": "#c7c7c8",
+    "dark": "#38383a"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/db927035-e183-4aa1-890a-6dd70ec0619b.png",
+  "logo": {
+    "light": "https://media.brand.dev/4642ba5a-d3cb-408f-b34b-c2dd2555300d.png",
+    "dark": "https://media.brand.dev/4642ba5a-d3cb-408f-b34b-c2dd2555300d.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Jasonvdb/owlmetry"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Jasonvdb/owlmetry"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "self-hosting"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/architecture",
+              "concepts/auth",
+              "concepts/projects-and-apps",
+              "concepts/events",
+              "concepts/metrics",
+              "concepts/funnels",
+              "concepts/experiments",
+              "concepts/identity"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "CLI",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "cli/overview",
+              "cli/setup",
+              "cli/commands",
+              "cli/ai-skills"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "SDKs",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "sdks/node",
+              "sdks/swift"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "deploy/vps-setup",
+              "deploy/configuration",
+              "deploy/database-maintenance",
+              "deploy/updating"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api-reference/overview",
+              "api-reference/authentication"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Auth",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api-reference/auth/send-code",
+              "api-reference/auth/verify-code",
+              "api-reference/auth/agent-login",
+              "api-reference/auth/me",
+              "api-reference/auth/keys"
+            ]
+          },
+          {
+            "group": "Teams",
+            "pages": [
+              "api-reference/teams/create",
+              "api-reference/teams/get",
+              "api-reference/teams/members",
+              "api-reference/teams/invitations"
+            ]
+          },
+          {
+            "group": "Projects & Apps",
+            "pages": [
+              "api-reference/projects/list",
+              "api-reference/projects/create",
+              "api-reference/apps/list",
+              "api-reference/apps/create",
+              "api-reference/apps/users"
+            ]
+          },
+          {
+            "group": "Events & Ingest",
+            "pages": [
+              "api-reference/ingest/batch",
+              "api-reference/events/query",
+              "api-reference/events/get",
+              "api-reference/identity/claim"
+            ]
+          },
+          {
+            "group": "Metrics",
+            "pages": [
+              "api-reference/metrics/list",
+              "api-reference/metrics/create",
+              "api-reference/metrics/query",
+              "api-reference/metrics/events"
+            ]
+          },
+          {
+            "group": "Funnels",
+            "pages": [
+              "api-reference/funnels/list",
+              "api-reference/funnels/create",
+              "api-reference/funnels/query"
+            ]
+          },
+          {
+            "group": "Audit Logs",
+            "pages": [
+              "api-reference/audit-logs/query"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

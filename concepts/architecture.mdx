@@ -1,0 +1,106 @@
+---
+title: Architecture
+description: How OwlMetry is structured — the monorepo, the data flow, and the three nginx endpoints.
+---
+
+OwlMetry is a self-hosted observability platform built around a single Postgres database and a Fastify API server. Everything else is a client of that API.
+
+## Monorepo layout
+
+```
+apps/server        Fastify API server (port 4000) — the core of OwlMetry
+apps/cli           CLI for agents and humans (agent key auth)
+apps/web           Next.js dashboard (port 3000) — optional visual layer
+sdks/swift         Swift SDK (Swift Package)
+sdks/node          Node.js server SDK (zero runtime dependencies)
+packages/shared    Shared TypeScript types and constants
+packages/db        Drizzle ORM schema, migrations, seed
+demos/ios          iOS demo app
+demos/node         Node.js demo server
+deploy/            VPS deployment scripts (Ubuntu 24.04 setup)
+```
+
+<Note>
+The API server is the product. The dashboard, the CLI, and the SDKs are all clients of the same REST API. Your agent has the same capabilities as the web UI — nothing is dashboard-only.
+</Note>
+
+## Component diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Your domain                          │
+│                                                             │
+│  yourdomain.com          api.yourdomain.com                 │
+│  (Next.js dashboard)     (Fastify API, port 4000)           │
+│        │                         │                          │
+│        └──────────┬──────────────┘                          │
+│                   │                                         │
+│          ingest.yourdomain.com                              │
+│          (Fastify API, ingest endpoint)                     │
+│                   │                                         │
+│                   ▼                                         │
+│         ┌─────────────────┐                                 │
+│         │    PostgreSQL    │                                 │
+│         │ (monthly parts) │                                 │
+│         └─────────────────┘                                 │
+└─────────────────────────────────────────────────────────────┘
+
+Clients:
+  Swift SDK  ──►  ingest.yourdomain.com  (owl_client_ key)
+  Node SDK   ──►  ingest.yourdomain.com  (owl_client_ key)
+  CLI        ──►  api.yourdomain.com     (owl_agent_ key)
+  Agent      ──►  api.yourdomain.com     (owl_agent_ key)
+  Dashboard  ──►  api.yourdomain.com     (JWT cookie)
+```
+
+## Three nginx endpoints
+
+A standard OwlMetry deployment exposes three subdomains:
+
+| Subdomain | Purpose | Auth |
+|-----------|---------|------|
+| `api.yourdomain.com` | REST API for agents, CLI, and dashboard | `owl_agent_` keys, JWT |
+| `ingest.yourdomain.com` | High-volume event ingestion | `owl_client_` keys |
+| `yourdomain.com` | Next.js web dashboard | JWT (set by API) |
+
+You can point the ingest subdomain at the same Fastify process — it's the same server. The separate subdomain lets you apply different nginx rate limits and cache rules to ingestion traffic.
+
+## Database
+
+OwlMetry runs on a single PostgreSQL instance (version 15+). There is no Kafka, no ClickHouse, no Redis. The schema uses **monthly partitioning** on three high-volume tables:
+
+- `events` — all ingested log events
+- `metric_events` — dual-written metric phase records
+- `funnel_events` — dual-written funnel step records
+
+Partitions are created automatically on migration and can be pruned by setting `MAX_DATABASE_SIZE_GB`. Postgres drops the oldest partition first when the size limit is reached.
+
+## Auth model
+
+Three credential types exist in the system:
+
+| Key prefix | Used by | Scope |
+|-----------|---------|-------|
+| `owl_client_` | SDKs, ingest endpoint | Scoped to a single app; validated against the app's bundle ID |
+| `owl_agent_` | CLI, coding agents | Scoped to a team; carries permission scopes |
+| JWT (cookie) | Web dashboard | Scoped to a user's team memberships |
+
+## How events flow
+
+<Steps>
+  <Step title="SDK buffers events in memory">
+    The Node or Swift SDK batches events locally. The Node SDK flushes every 5 seconds or when 20 events accumulate. The Swift SDK flushes periodically or on app background.
+  </Step>
+  <Step title="SDK POSTs to the ingest endpoint">
+    The SDK sends a batch of up to 100 events to `POST /v1/ingest` with an `owl_client_` key. Payloads over 512 bytes are gzip-compressed automatically.
+  </Step>
+  <Step title="Server validates and deduplicates">
+    The API server validates each event, checks for duplicate `client_event_id` values within the last 48 hours, and rejects events with invalid fields.
+  </Step>
+  <Step title="Events written to Postgres">
+    Accepted events are inserted into the partitioned `events` table. Metric events (messages matching `metric:<slug>:*`) are dual-written to `metric_events`. Track events (messages matching `track:*`) are dual-written to `funnel_events`.
+  </Step>
+  <Step title="Agent queries via API">
+    Your coding agent (or you) queries events via `GET /v1/events` using an `owl_agent_` key, filtering by app, level, time range, user, or session.
+  </Step>
+</Steps>

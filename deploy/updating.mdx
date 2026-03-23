@@ -1,0 +1,93 @@
+---
+title: 'Updating'
+description: 'How to update OwlMetry to the latest version, run migrations, and verify the deployment after an update.'
+keywords: ['update', 'upgrade', 'migration', 'rollback', 'pm2']
+---
+
+<Warning>
+OwlMetry is currently in alpha. APIs and database schemas may change without notice between releases. Review the changelog before updating in production.
+</Warning>
+
+## Update procedure
+
+Run these commands from the `/opt/owlmetry` directory:
+
+```bash
+cd /opt/owlmetry
+git pull
+pnpm install
+pnpm build
+pnpm db:migrate
+pm2 restart all
+```
+
+Each step in order:
+
+1. `git pull` — fetch the latest code
+2. `pnpm install` — install any new or updated dependencies
+3. `pnpm build` — rebuild the API and web app
+4. `pnpm db:migrate` — apply any new database migrations
+5. `pm2 restart all` — restart both services with the new build
+
+## Checking if migrations are needed
+
+If you want to inspect pending migrations before applying them, you can check what `pnpm db:migrate` would do by reviewing the migration files in `apps/server/src/db/migrations/`. Any migration files not yet recorded in the `drizzle_migrations` table will be applied.
+
+You can also check the current migration state:
+
+```bash
+psql $DATABASE_URL -c "SELECT * FROM drizzle_migrations ORDER BY created_at DESC LIMIT 10;"
+```
+
+## Monitoring after an update
+
+After restarting, verify both services came back online:
+
+```bash
+pm2 status
+```
+
+Both `owlmetry-api` and `owlmetry-web` should show status `online`. If either shows `errored`, check the logs:
+
+```bash
+pm2 logs owlmetry-api --lines 50
+pm2 logs owlmetry-web --lines 50
+```
+
+Confirm the API is healthy:
+
+```bash
+curl -s https://api.yourdomain.com/health
+# Expected: {"status":"ok"}
+```
+
+## Rolling back
+
+There is no automated rollback. To revert to a previous version:
+
+1. Check out the previous commit:
+
+   ```bash
+   cd /opt/owlmetry
+   git log --oneline -10
+   git checkout <previous-commit-hash>
+   ```
+
+2. Rebuild:
+
+   ```bash
+   pnpm install
+   pnpm build
+   ```
+
+3. If the update included migrations, you will need to manually reverse them. There are no down migrations — inspect the migration files and write the inverse SQL by hand.
+
+4. Restart services:
+
+   ```bash
+   pm2 restart all
+   ```
+
+<Warning>
+Rolling back database migrations is a manual process. If the update added new columns or tables, reverting the code without reverting the schema will likely cause errors. Take a database backup before every update.
+</Warning>

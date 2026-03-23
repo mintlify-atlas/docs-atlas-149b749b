@@ -1,0 +1,218 @@
+---
+title: "Query funnel analytics"
+description: "Query funnel conversion rates, drop-off per step, and optional experiment variant breakdowns."
+---
+
+`GET /v1/projects/:projectId/funnels/:slug/query`
+
+**Auth:** Agent key (`funnels:read`) or JWT
+
+Computes per-step conversion analytics for a funnel over a time window. Returns unique user counts, overall percentage relative to step 1, and step-to-step drop-off. Optionally breaks results down by environment, app version, or experiment variant.
+
+The default time window is the last **30 days** when `since` is not provided.
+
+## Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The funnel slug (e.g. `checkout`).
+</ParamField>
+
+## Query parameters
+
+<ParamField query="since" type="string">
+  Time range start. ISO 8601 datetime. Defaults to 30 days ago.
+</ParamField>
+
+<ParamField query="until" type="string">
+  Time range end. ISO 8601 datetime. Defaults to now.
+</ParamField>
+
+<ParamField query="mode" type='"closed" | "open"'>
+  Funnel attribution mode. Defaults to `closed`.
+
+  - **`closed`** — a user must complete each step in order; step N only counts users who already completed step N-1.
+  - **`open`** — each step is counted independently; a user can appear in any step regardless of whether they completed earlier steps.
+</ParamField>
+
+<ParamField query="app_id" type="string">
+  Filter to a single app within the project.
+</ParamField>
+
+<ParamField query="app_version" type="string">
+  Filter to a specific app version string.
+</ParamField>
+
+<ParamField query="environment" type="string">
+  Filter by environment: `ios`, `ipados`, `macos`, `android`, `web`, or `backend`.
+</ParamField>
+
+<ParamField query="experiment" type="string">
+  Filter to users in a specific experiment variant. Format: `experiment_name:variant` (e.g. `checkout-flow:new-ui`).
+</ParamField>
+
+<ParamField query="group_by" type="string">
+  Break down results by a dimension. Accepted values: `environment`, `app_version`, or `experiment:<name>` (e.g. `experiment:checkout-flow`).
+</ParamField>
+
+<ParamField query="data_mode" type='"production" | "development" | "all"'>
+  Filter by data origin. Defaults to `all`.
+</ParamField>
+
+## Response
+
+<ResponseField name="slug" type="string">
+  The funnel slug echoed back.
+</ResponseField>
+
+<ResponseField name="analytics" type="object">
+  The computed funnel analytics.
+
+  <Expandable title="analytics fields">
+    <ResponseField name="funnel" type="object">
+      The funnel definition at query time (same shape as the definition response).
+    </ResponseField>
+    <ResponseField name="mode" type="string">
+      The attribution mode used: `closed` or `open`.
+    </ResponseField>
+    <ResponseField name="total_users" type="number">
+      Unique users who reached step 1 in the window.
+    </ResponseField>
+    <ResponseField name="steps" type="array">
+      Per-step analytics, ordered from step 1 to the last step.
+
+      <Expandable title="Step analytics fields">
+        <ResponseField name="step_index" type="number">
+          Zero-based index of this step.
+        </ResponseField>
+        <ResponseField name="step_name" type="string">
+          Display name of this step.
+        </ResponseField>
+        <ResponseField name="unique_users" type="number">
+          Unique users who reached this step.
+        </ResponseField>
+        <ResponseField name="percentage" type="number">
+          Percentage of step-1 users who reached this step (0–100, one decimal place).
+        </ResponseField>
+        <ResponseField name="drop_off_count" type="number">
+          Users who completed the previous step but not this one. `0` for step 1.
+        </ResponseField>
+        <ResponseField name="drop_off_percentage" type="number">
+          Drop-off as a percentage of the previous step's users. `0` for step 1.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="breakdown" type="array">
+      Present when `group_by` is supplied. One entry per distinct dimension value.
+
+      <Expandable title="Breakdown group fields">
+        <ResponseField name="key" type="string">
+          The `group_by` dimension (e.g. `app_version` or `experiment:checkout-flow`).
+        </ResponseField>
+        <ResponseField name="value" type="string">
+          The dimension value for this group (e.g. `2.4.1` or `new-ui`).
+        </ResponseField>
+        <ResponseField name="total_users" type="number">
+          Unique users in this group who reached step 1.
+        </ResponseField>
+        <ResponseField name="steps" type="array">
+          Per-step analytics for this group (same shape as the top-level `steps` array).
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/funnels/checkout/query?since=2025-03-16T00:00:00Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "slug": "checkout",
+  "analytics": {
+    "funnel": {
+      "id": "fdef_02cd",
+      "project_id": "proj_abc",
+      "name": "Checkout",
+      "slug": "checkout",
+      "description": null,
+      "steps": [
+        { "name": "Viewed Cart",      "event_filter": { "screen_name": "CartScreen" } },
+        { "name": "Entered Checkout", "event_filter": { "message": "checkout_start" } },
+        { "name": "Payment Submitted","event_filter": { "message": "payment_submit" } },
+        { "name": "Order Confirmed",  "event_filter": { "message": "order_confirmed" } }
+      ],
+      "created_at": "2025-03-01T09:00:00.000Z",
+      "updated_at": "2025-03-01T09:00:00.000Z"
+    },
+    "mode": "closed",
+    "total_users": 3200,
+    "steps": [
+      { "step_index": 0, "step_name": "Viewed Cart",      "unique_users": 3200, "percentage": 100.0, "drop_off_count": 0,    "drop_off_percentage": 0.0  },
+      { "step_index": 1, "step_name": "Entered Checkout", "unique_users": 2240, "percentage": 70.0,  "drop_off_count": 960,  "drop_off_percentage": 30.0 },
+      { "step_index": 2, "step_name": "Payment Submitted","unique_users": 1792, "percentage": 56.0,  "drop_off_count": 448,  "drop_off_percentage": 20.0 },
+      { "step_index": 3, "step_name": "Order Confirmed",  "unique_users": 1702, "percentage": 53.2,  "drop_off_count": 90,   "drop_off_percentage": 5.0  }
+    ]
+  }
+}
+```
+
+## Analyzing A/B experiment impact
+
+Use `group_by=experiment:<name>` to see how an experiment variant affects funnel conversion. The response includes a `breakdown` array with one entry per variant, each containing full per-step analytics.
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/funnels/checkout/query?since=2025-03-16T00:00:00Z&group_by=experiment:checkout-flow" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "slug": "checkout",
+  "analytics": {
+    "funnel": { "..." : "..." },
+    "mode": "closed",
+    "total_users": 3200,
+    "steps": [ "..." ],
+    "breakdown": [
+      {
+        "key": "experiment:checkout-flow",
+        "value": "new-ui",
+        "total_users": 1580,
+        "steps": [
+          { "step_index": 0, "step_name": "Viewed Cart",      "unique_users": 1580, "percentage": 100.0, "drop_off_count": 0,   "drop_off_percentage": 0.0  },
+          { "step_index": 1, "step_name": "Entered Checkout", "unique_users": 1264, "percentage": 80.0,  "drop_off_count": 316, "drop_off_percentage": 20.0 },
+          { "step_index": 2, "step_name": "Payment Submitted","unique_users": 1075, "percentage": 68.0,  "drop_off_count": 189, "drop_off_percentage": 15.0 },
+          { "step_index": 3, "step_name": "Order Confirmed",  "unique_users": 1054, "percentage": 66.7,  "drop_off_count": 21,  "drop_off_percentage": 2.0  }
+        ]
+      },
+      {
+        "key": "experiment:checkout-flow",
+        "value": "control",
+        "total_users": 1620,
+        "steps": [
+          { "step_index": 0, "step_name": "Viewed Cart",      "unique_users": 1620, "percentage": 100.0, "drop_off_count": 0,   "drop_off_percentage": 0.0  },
+          { "step_index": 1, "step_name": "Entered Checkout", "unique_users": 972,  "percentage": 60.0,  "drop_off_count": 648, "drop_off_percentage": 40.0 },
+          { "step_index": 2, "step_name": "Payment Submitted","unique_users": 778,  "percentage": 48.0,  "drop_off_count": 194, "drop_off_percentage": 20.0 },
+          { "step_index": 3, "step_name": "Order Confirmed",  "unique_users": 756,  "percentage": 46.7,  "drop_off_count": 22,  "drop_off_percentage": 2.8  }
+        ]
+      }
+    ]
+  }
+}
+```
+
+In this example, users in the `new-ui` variant converted at 66.7% vs 46.7% for control — a 20-point lift.
+
+**CLI equivalent**
+
+```bash
+owlmetry funnels query checkout --project proj_abc --since 7d
+```

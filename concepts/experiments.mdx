@@ -1,0 +1,117 @@
+---
+title: Experiments
+description: Client-side A/B variant assignment, persistence, and how experiments tag every event automatically.
+---
+
+OwlMetry includes a lightweight A/B experimentation system built into both SDKs. There is no server-side configuration — variant assignment happens on the client.
+
+## How variant assignment works
+
+On the first call to `getVariant()`, the SDK picks a random variant from the options you provide and persists the assignment locally. Every subsequent call returns the stored variant — the `options` parameter is ignored after the first assignment.
+
+<CodeGroup>
+```typescript Node SDK
+import { Owl } from '@owlmetry/node';
+
+// Returns 'control' or 'streamlined' — randomly on first call,
+// then reads from ~/.owlmetry/experiments.json
+const variant = Owl.getVariant('onboarding-flow', ['control', 'streamlined']);
+
+if (variant === 'streamlined') {
+  // Show simplified onboarding
+} else {
+  // Show standard onboarding
+}
+```
+
+```swift Swift SDK
+import OwlMetry
+
+let variant = Owl.getVariant("onboarding-flow", options: ["control", "streamlined"])
+
+if variant == "streamlined" {
+    // Show simplified onboarding
+}
+```
+</CodeGroup>
+
+## Where assignments are stored
+
+| SDK | Storage location |
+|-----|------------------|
+| Node | `~/.owlmetry/experiments.json` |
+| Swift | `UserDefaults` / Keychain (platform-appropriate persistence) |
+
+The Node SDK loads stored assignments at `Owl.configure()` time. If the file does not exist or is malformed, the SDK starts with an empty experiment state and creates the file on the first assignment.
+
+## Automatic event tagging
+
+Every event emitted after a variant is assigned — logs, metric operations, funnel steps — is automatically tagged with all active experiment assignments. You do not need to pass experiment data to individual log calls.
+
+```typescript
+Owl.configure({ endpoint: '...', apiKey: 'owl_client_...' });
+
+// Assign variant
+const variant = Owl.getVariant('checkout-flow', ['v1', 'v2']);
+
+// This event is automatically tagged: experiments: { 'checkout-flow': 'v2' }
+Owl.info('Checkout started', { cart_size: '3' });
+
+// This funnel step is also tagged
+Owl.track('checkout-started');
+```
+
+The `experiments` field in every event is a `Record<string, string>` mapping experiment name to the assigned variant.
+
+## Forcing a variant
+
+Use `setExperiment()` to force a specific variant — useful for testing, QA, or when you want an agent to reproduce a specific user's experience:
+
+<CodeGroup>
+```typescript Node SDK
+// Force the 'streamlined' variant for 'onboarding-flow'
+Owl.setExperiment('onboarding-flow', 'streamlined');
+```
+
+```swift Swift SDK
+Owl.setExperiment("onboarding-flow", variant: "streamlined")
+```
+</CodeGroup>
+
+The assignment is persisted immediately. Future calls to `getVariant('onboarding-flow', ...)` return `'streamlined'` until you clear it.
+
+## Clearing experiments
+
+To reset all experiment assignments:
+
+<CodeGroup>
+```typescript Node SDK
+Owl.clearExperiments();
+```
+
+```swift Swift SDK
+Owl.clearExperiments()
+```
+</CodeGroup>
+
+This clears the stored assignments and persists the empty state. The next call to `getVariant()` will pick a new random variant.
+
+## Querying by experiment
+
+Because all events carry experiment data, you can filter and group analytics by variant:
+
+```bash
+# Query funnel analytics grouped by experiment variant
+curl "https://api.yourdomain.com/v1/projects/<id>/funnels/onboarding/query?group_by=experiment:onboarding-flow" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+See [Funnels](/concepts/funnels) for the full breakdown response format.
+
+<Note>
+Experiment variant assignment is entirely client-side. There is no experiment configuration on the server. The server only stores the `experiments` field on each event — it never assigns or validates variants.
+</Note>
+
+<Tip>
+Because the Node SDK stores assignments in `~/.owlmetry/experiments.json`, different processes on the same machine share the same assignments. If you run multiple services on the same host, each with its own `Owl.configure()` call, they will all read from and write to the same file.
+</Tip>

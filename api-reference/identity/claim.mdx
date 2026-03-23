@@ -1,0 +1,104 @@
+---
+title: "Claim Identity"
+description: "Link an anonymous user ID to a known user account after login."
+---
+
+`POST /v1/identity/claim`
+
+**Auth:** Client key (`events:write`) — scoped to a specific app
+
+Retroactively reassigns all events, funnel events, and metric events from an
+anonymous user to a known user account. Call this endpoint immediately after
+your user logs in or creates an account, passing the `owl_anon_` ID that was
+used before authentication.
+
+## How it works
+
+Before login, OwlMetry tracks activity under a generated anonymous ID with the
+`owl_anon_` prefix. After the user authenticates, you call this endpoint to
+merge the pre-login history into their real account:
+
+1. All events with `user_id = anonymous_id` are updated to `user_id = user_id`.
+2. The anonymous user record is merged into the real user record (or renamed in
+   place if no real user record exists yet).
+3. The real user's `claimed_from` list is updated to record which anonymous IDs
+   were merged.
+4. If the anonymous user's `first_seen_at` is earlier than the real user's, it
+   is adopted as the canonical `first_seen_at`.
+
+The operation is **idempotent** — calling it multiple times with the same pair
+returns `claimed: true` with `events_reassigned_count: 0` on subsequent calls.
+
+## Request body
+
+<ParamField body="anonymous_id" type="string" required>
+  The anonymous user ID to claim. Must start with `owl_anon_`.
+</ParamField>
+
+<ParamField body="user_id" type="string" required>
+  The real user ID to merge into. Must **not** start with `owl_anon_`.
+</ParamField>
+
+## Response
+
+<ResponseField name="claimed" type="boolean">
+  Always `true` on a successful response.
+</ResponseField>
+
+<ResponseField name="events_reassigned_count" type="number">
+  Number of events whose `user_id` was updated. `0` when the claim was
+  already processed previously (idempotent repeat call).
+</ResponseField>
+
+## Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/identity/claim \
+  -H "Authorization: Bearer owl_client_xxx" \
+  -H "Content-Type: application/json" \
+  -H "X-Bundle-ID: com.example.myapp" \
+  -d '{
+    "anonymous_id": "owl_anon_9f8e7d6c5b4a3210",
+    "user_id": "user_alice"
+  }'
+```
+
+```json
+{
+  "claimed": true,
+  "events_reassigned_count": 47
+}
+```
+
+### Repeat call (idempotent)
+
+```bash
+# Calling again with the same pair
+curl -X POST https://api.yourdomain.com/v1/identity/claim \
+  -H "Authorization: Bearer owl_client_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "anonymous_id": "owl_anon_9f8e7d6c5b4a3210",
+    "user_id": "user_alice"
+  }'
+```
+
+```json
+{
+  "claimed": true,
+  "events_reassigned_count": 0
+}
+```
+
+## Errors
+
+| Status | Meaning |
+|--------|--------|
+| `400`  | `anonymous_id` or `user_id` is missing, `anonymous_id` does not start with `owl_anon_`, `user_id` starts with `owl_anon_`, or the client key is not scoped to an app. |
+| `404`  | No events were found for the given `anonymous_id`. |
+
+<Warning>
+  This endpoint writes inside a database transaction covering events, funnel
+  events, metric events, and the app_users table. For apps with a very large
+  number of pre-login events, the call may take a few seconds to complete.
+</Warning>

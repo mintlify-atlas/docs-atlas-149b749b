@@ -1,0 +1,295 @@
+---
+title: "Team Invitations"
+description: "Send, list, revoke, and accept team invitations."
+---
+
+Invitations allow you to add new members to a team via email. Each invitation is valid for **7 days**. Re-inviting the same email before acceptance resets the token and expiry.
+
+---
+
+## POST /v1/teams/:teamId/invitations
+
+`POST /v1/teams/:teamId/invitations`
+
+**Auth:** JWT (admin or owner)
+
+Creates a new invitation or resends an existing pending invitation to the given email address. The invited user receives an email with an acceptance link.
+
+<Note>
+  Only owners can invite someone with the `owner` role. Admins can invite at the `admin` or `member` level.
+</Note>
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team to invite the user to.
+</ParamField>
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  Email address of the person to invite.
+</ParamField>
+
+<ParamField body="role" type="string">
+  Role to grant on acceptance. One of `"owner"`, `"admin"`, or `"member"`. Defaults to `"member"`.
+</ParamField>
+
+### Response
+
+Returns `201 Created`.
+
+<ResponseField name="id" type="string">Invitation UUID.</ResponseField>
+<ResponseField name="team_id" type="string">Team UUID.</ResponseField>
+<ResponseField name="email" type="string">Invited email address.</ResponseField>
+<ResponseField name="role" type="string">Role granted on acceptance.</ResponseField>
+
+<ResponseField name="invited_by" type="object">
+  The user who created this invitation.
+
+  <Expandable title="invited_by fields">
+    <ResponseField name="invited_by.user_id" type="string">UUID of the inviting user.</ResponseField>
+    <ResponseField name="invited_by.name" type="string">Display name.</ResponseField>
+    <ResponseField name="invited_by.email" type="string">Email address.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">ISO 8601 expiry timestamp (7 days from creation).</ResponseField>
+<ResponseField name="accepted_at" type="null">Always `null` on creation.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"email is required"` |
+| `400`  | `"Invalid role"` |
+| `403`  | Caller lacks `admin`/`owner` role or is trying to invite an `owner` without being an owner themselves |
+| `404`  | `"Team not found"` |
+| `409`  | `"User is already a member of this team"` |
+
+### Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/teams/tm_01hx.../invitations \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "bob@example.com", "role": "admin"}'
+```
+
+```json Response
+{
+  "id": "inv_01hx...",
+  "team_id": "tm_01hx...",
+  "email": "bob@example.com",
+  "role": "admin",
+  "invited_by": {
+    "user_id": "usr_01hx...",
+    "name": "Alice",
+    "email": "alice@example.com"
+  },
+  "expires_at": "2024-06-22T14:00:00.000Z",
+  "accepted_at": null,
+  "created_at": "2024-06-15T14:00:00.000Z"
+}
+```
+
+---
+
+## GET /v1/teams/:teamId/invitations
+
+`GET /v1/teams/:teamId/invitations`
+
+**Auth:** JWT (any team member)
+
+Returns all pending (not accepted, not expired) invitations for the team.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team.
+</ParamField>
+
+### Response
+
+<ResponseField name="invitations" type="array">
+  List of pending invitation objects (same shape as the create response).
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/teams/tm_01hx.../invitations \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "invitations": [
+    {
+      "id": "inv_01hx...",
+      "team_id": "tm_01hx...",
+      "email": "bob@example.com",
+      "role": "admin",
+      "invited_by": {
+        "user_id": "usr_01hx...",
+        "name": "Alice",
+        "email": "alice@example.com"
+      },
+      "expires_at": "2024-06-22T14:00:00.000Z",
+      "accepted_at": null,
+      "created_at": "2024-06-15T14:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## DELETE /v1/teams/:teamId/invitations/:invitationId
+
+`DELETE /v1/teams/:teamId/invitations/:invitationId`
+
+**Auth:** JWT (admin or owner)
+
+Revokes a pending invitation. The invitation record is hard-deleted. The invited user's acceptance link will return `404` afterward.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team.
+</ParamField>
+
+<ParamField path="invitationId" type="string" required>
+  UUID of the invitation to revoke.
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean">
+  Always `true` on success.
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `403`  | `"Only users can revoke invitations"` or caller lacks `admin`/`owner` role |
+| `404`  | `"Invitation not found"` |
+
+### Example
+
+```bash
+curl -X DELETE https://api.yourdomain.com/v1/teams/tm_01hx.../invitations/inv_01hx... \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "deleted": true
+}
+```
+
+---
+
+## GET /v1/invites/:token
+
+`GET /v1/invites/:token`
+
+**Auth:** None required
+
+Returns public details about an invitation identified by its token. This is intended for the pre-login invitation acceptance page, which needs to show the team name and inviter before the user is authenticated.
+
+### Path parameters
+
+<ParamField path="token" type="string" required>
+  The invitation token from the acceptance link (a UUID).
+</ParamField>
+
+### Response
+
+<ResponseField name="team_name" type="string">Display name of the team.</ResponseField>
+<ResponseField name="team_slug" type="string">URL-safe team identifier.</ResponseField>
+<ResponseField name="role" type="string">Role the invitee will receive: `owner`, `admin`, or `member`.</ResponseField>
+<ResponseField name="email" type="string">Email address this invitation was sent to.</ResponseField>
+<ResponseField name="invited_by_name" type="string">Display name of the user who sent the invitation.</ResponseField>
+<ResponseField name="expires_at" type="string">ISO 8601 expiry timestamp.</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `404`  | `"Invitation not found"` — token is invalid or the team has been deleted. |
+| `410`  | `"This invitation has already been accepted"` |
+| `410`  | `"This invitation has expired"` |
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/invites/550e8400-e29b-41d4-a716-446655440000
+```
+
+```json Response
+{
+  "team_name": "Acme Engineering",
+  "team_slug": "acme-eng",
+  "role": "admin",
+  "email": "bob@example.com",
+  "invited_by_name": "Alice",
+  "expires_at": "2024-06-22T14:00:00.000Z"
+}
+```
+
+---
+
+## POST /v1/invites/accept
+
+`POST /v1/invites/accept`
+
+**Auth:** JWT (the user whose email matches the invitation)
+
+Accepts an invitation and adds the authenticated user to the team with the role specified in the invitation.
+
+<Warning>
+  You must be signed in as the email address the invitation was sent to. Attempting to accept with a different account returns `403 Forbidden`.
+</Warning>
+
+### Request body
+
+<ParamField body="token" type="string" required>
+  The invitation token (UUID) from the acceptance link.
+</ParamField>
+
+### Response
+
+<ResponseField name="team_id" type="string">UUID of the team the user has joined.</ResponseField>
+<ResponseField name="team_name" type="string">Display name of the team.</ResponseField>
+<ResponseField name="role" type="string">The role granted to the user.</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"token is required"` |
+| `403`  | `"Only users can accept invitations"` — request was made with an API key. |
+| `403`  | `"This invitation was sent to <email>. You are signed in as <email>."` — email mismatch. |
+| `404`  | `"Invitation not found"` |
+| `410`  | `"This invitation has already been accepted"` |
+| `410`  | `"This invitation has expired"` |
+
+### Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/invites/accept \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"token": "550e8400-e29b-41d4-a716-446655440000"}'
+```
+
+```json Response
+{
+  "team_id": "tm_01hx...",
+  "team_name": "Acme Engineering",
+  "role": "admin"
+}
+```

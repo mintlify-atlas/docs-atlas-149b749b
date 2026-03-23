@@ -1,0 +1,193 @@
+---
+title: "Create & manage funnels"
+description: "Create, update, and delete funnel definitions."
+---
+
+## Create a funnel
+
+`POST /v1/projects/:projectId/funnels`
+
+**Auth:** Agent key (`funnels:write`) or JWT (admin or owner role required)
+
+Creates a new funnel definition in the specified project. Slugs must be unique within a project. A funnel requires at least one step; the maximum is 20 steps.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+### Body
+
+<ParamField body="name" type="string" required>
+  Human-readable funnel name (e.g. `Checkout`).
+</ParamField>
+
+<ParamField body="slug" type="string" required>
+  URL-safe identifier. Must match `^[a-z0-9-]+$` (e.g. `checkout`). Must be unique within the project.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Short description of what this funnel measures.
+</ParamField>
+
+<ParamField body="steps" type="array" required>
+  Ordered list of funnel steps. Between 1 and 20 steps. Each step must have a `name` and an `event_filter` with at least `message` or `screen_name`.
+
+  <Expandable title="Step fields">
+    <ParamField body="name" type="string" required>
+      Display name for this step (e.g. `Added to Cart`).
+    </ParamField>
+    <ParamField body="event_filter" type="object" required>
+      Criteria used to match events to this step.
+
+      <Expandable title="event_filter fields">
+        <ParamField body="message" type="string">
+          Matches events whose `message` equals this value.
+        </ParamField>
+        <ParamField body="screen_name" type="string">
+          Matches events whose `screen_name` equals this value.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Response
+
+Returns the created funnel definition with HTTP `201`.
+
+### Errors
+
+| Status | Meaning |
+|--------|---------|
+| `400`  | `name` or `slug` is missing, slug format is invalid, or steps validation failed. |
+| `403`  | The authenticated user or agent key does not have admin access to the project's team. |
+| `409`  | A funnel with this slug already exists in this project. |
+
+### Example
+
+```bash
+curl -X POST "https://api.yourdomain.com/v1/projects/proj_abc/funnels" \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Checkout",
+    "slug": "checkout",
+    "description": "User journey from cart to purchase confirmation.",
+    "steps": [
+      { "name": "Viewed Cart",     "event_filter": { "screen_name": "CartScreen" } },
+      { "name": "Entered Checkout","event_filter": { "message": "checkout_start" } },
+      { "name": "Payment Submitted","event_filter": { "message": "payment_submit" } },
+      { "name": "Order Confirmed", "event_filter": { "message": "order_confirmed" } }
+    ]
+  }'
+```
+
+```json Response
+{
+  "id": "fdef_02cd",
+  "project_id": "proj_abc",
+  "name": "Checkout",
+  "slug": "checkout",
+  "description": "User journey from cart to purchase confirmation.",
+  "steps": [
+    { "name": "Viewed Cart",      "event_filter": { "screen_name": "CartScreen" } },
+    { "name": "Entered Checkout", "event_filter": { "message": "checkout_start" } },
+    { "name": "Payment Submitted","event_filter": { "message": "payment_submit" } },
+    { "name": "Order Confirmed",  "event_filter": { "message": "order_confirmed" } }
+  ],
+  "created_at": "2025-03-01T09:00:00.000Z",
+  "updated_at": "2025-03-01T09:00:00.000Z"
+}
+```
+
+**CLI equivalent**
+
+```bash
+owlmetry funnels create \
+  --project proj_abc \
+  --name "Checkout" \
+  --slug checkout \
+  --steps '[{"name":"Viewed Cart","event_filter":{"screen_name":"CartScreen"}},{"name":"Entered Checkout","event_filter":{"message":"checkout_start"}},{"name":"Order Confirmed","event_filter":{"message":"order_confirmed"}}]'
+```
+
+---
+
+## Update a funnel
+
+`PATCH /v1/projects/:projectId/funnels/:slug`
+
+**Auth:** Agent key (`funnels:write`) or JWT (admin or owner role required)
+
+Partially updates a funnel definition. Supply only the fields you want to change. At least one field is required. When updating `steps`, the entire steps array is replaced.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The current slug of the funnel to update.
+</ParamField>
+
+### Body
+
+<ParamField body="name" type="string">
+  New display name.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated description.
+</ParamField>
+
+<ParamField body="steps" type="array">
+  Replacement steps array. Must pass the same validation as on creation (1–20 steps, each with `name` and a valid `event_filter`).
+</ParamField>
+
+### Response
+
+Returns the updated funnel definition.
+
+### Example
+
+```bash
+curl -X PATCH "https://api.yourdomain.com/v1/projects/proj_abc/funnels/checkout" \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Checkout v2"}'
+```
+
+---
+
+## Delete a funnel
+
+`DELETE /v1/projects/:projectId/funnels/:slug`
+
+**Auth:** JWT only (admin or owner role required)
+
+Soft-deletes a funnel definition. The funnel no longer appears in listings but its historical analytics data is preserved. This operation cannot be performed with an agent key.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The slug of the funnel to delete.
+</ParamField>
+
+### Response
+
+```json
+{ "deleted": true }
+```
+
+### Example
+
+```bash
+curl -X DELETE "https://api.yourdomain.com/v1/projects/proj_abc/funnels/checkout" \
+  -H "Authorization: Bearer <jwt>"
+```

@@ -1,0 +1,114 @@
+---
+title: Identity
+description: Anonymous IDs, linking events to known users with setUser(), and retroactively claiming anonymous history.
+---
+
+OwlMetry tracks users from the moment they first appear, even before you know who they are. Anonymous IDs ensure that pre-login events are preserved and can be linked to a real user later.
+
+## Anonymous IDs
+
+The Swift SDK generates an `owl_anon_` prefixed ID on first launch and persists it for the lifetime of the installation. The Node SDK uses a similar approach, storing the anonymous ID in a local config file.
+
+| SDK | Storage |
+|-----|----------|
+| Swift | `UserDefaults` for most apps; Keychain where appropriate |
+| Node | Local config file in `~/.owlmetry/` |
+
+All events emitted before `setUser()` is called carry this anonymous ID as their `user_id`.
+
+## Linking to a known user
+
+Once a user authenticates in your app, call `setUser()` to link subsequent events to their real identity:
+
+<CodeGroup>
+```typescript Node SDK
+import { Owl } from '@owlmetry/node';
+
+// After the user logs in
+Owl.setUser('user_123');
+
+// All events from here use user_id: 'user_123'
+Owl.info('Dashboard loaded');
+
+// Revert to anonymous on logout
+Owl.clearUser();
+```
+
+```swift Swift SDK
+import OwlMetry
+
+// After authentication
+Owl.setUser("user_123")
+
+// All subsequent events tagged with user_id: "user_123"
+Owl.info("Dashboard loaded")
+
+// Revert to anonymous
+Owl.clearUser()
+```
+</CodeGroup>
+
+You can also create a scoped logger in the Node SDK that always uses a specific user ID, without changing the global state:
+
+```typescript
+const owl = Owl.withUser('user_123');
+owl.info('Processing order', { order_id: 'ord_456' });
+owl.error('Payment failed', { reason: 'insufficient_funds' });
+```
+
+## Retroactively linking anonymous events
+
+When a user logs in, their pre-login session (captured under an `owl_anon_` ID) can be merged into their real identity. Call `POST /v1/identity/claim` with the anonymous ID and the real user ID:
+
+```bash
+curl -X POST https://ingest.yourdomain.com/v1/identity/claim \
+  -H "Authorization: Bearer owl_client_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "anonymous_id": "owl_anon_3fa85f64...",
+    "user_id": "user_123"
+  }'
+```
+
+The server updates `user_id` on all matching events in a single transaction:
+
+- All rows in `events` with `user_id = anonymous_id` and `app_id` matching the client key
+- All rows in `funnel_events` for the same app
+- All rows in `metric_events` for the same app
+- The `app_users` table — the anonymous row is merged into the real user row, with `claimed_from` tracking which anonymous IDs were merged
+
+The response confirms how many events were reassigned:
+
+```json
+{
+  "claimed": true,
+  "events_reassigned_count": 47
+}
+```
+
+**Requirements:**
+- The `anonymous_id` must start with `owl_anon_`
+- The `user_id` must not start with `owl_anon_`
+- The client key must be scoped to an app
+- The call is idempotent — claiming the same anonymous ID twice returns `events_reassigned_count: 0`
+
+<Warning>
+The claim endpoint requires a client key (`owl_client_`), not an agent key. This ensures the claim is scoped to the correct app.
+</Warning>
+
+## User timeline
+
+After a claim, the user's timeline in the dashboard (and via the events API) shows all events — both the pre-login anonymous events and the post-login attributed events — under the single `user_id`.
+
+You can query a user's full history with:
+
+```bash
+owlmetry events --app <app-id> --user-id user_123
+```
+
+or via the API:
+
+```bash
+curl "https://api.yourdomain.com/v1/events?app_id=<id>&user_id=user_123" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```

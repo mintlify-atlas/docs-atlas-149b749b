@@ -1,0 +1,109 @@
+---
+title: Authentication & Authorization
+description: The three auth types, role-based access, permission scopes, and team invitations.
+---
+
+OwlMetry uses three distinct authentication mechanisms, each designed for a different client type. Every request to the API is authenticated.
+
+## Auth types
+
+<CardGroup cols={3}>
+  <Card title="JWT" icon="cookie">
+    Used by the **web dashboard**. Issued after email verification, stored as an `httpOnly` cookie. Expires after 7 days.
+  </Card>
+  <Card title="owl_agent_ keys" icon="terminal">
+    Used by the **CLI and coding agents**. Carry explicit permission scopes. Scoped to a team.
+  </Card>
+  <Card title="owl_client_ keys" icon="mobile">
+    Used by the **Node and Swift SDKs**. Scoped to a single app. Validated against the app's registered bundle ID on every ingest request.
+  </Card>
+</CardGroup>
+
+## Role-based access
+
+Every team member has one of three roles:
+
+| Role | Permissions |
+|------|-------------|
+| `owner` | All permissions, including team deletion |
+| `admin` | Create/update/delete resources, manage members and API keys |
+| `member` | Read access; cannot create or delete resources |
+
+Role is enforced per-team. A user can be an `owner` in one team and a `member` in another.
+
+## Permission scopes
+
+Agent keys (`owl_agent_`) carry a set of explicit permission scopes. When you create an agent key, you choose which scopes to grant:
+
+| Scope | What it allows |
+|-------|----------------|
+| `projects:read` | List and view projects |
+| `projects:write` | Create and update projects |
+| `apps:read` | List and view apps |
+| `apps:write` | Create and update apps |
+| `events:read` | Query events |
+| `funnels:read` | List and query funnel definitions |
+| `funnels:write` | Create and update funnel definitions |
+| `metrics:read` | List and query metric definitions |
+| `metrics:write` | Create and update metric definitions |
+| `audit_logs:read` | Query audit log entries |
+
+<Note>
+Client keys (`owl_client_`) always have `events:write` only — they can ingest events but cannot read any data.
+</Note>
+
+## Bundle ID validation
+
+Client keys are scoped to a single app. When that app has a `bundle_id` registered (required for `apple`, `android`, and `web` platforms), every ingest request must include a matching `bundle_id` field in the request body.
+
+If the bundle ID in the request does not match the app's registered bundle ID, the server returns `403`. This prevents a leaked client key from being used to ingest events against a different app.
+
+## Generating API keys
+
+You can generate keys via the dashboard or the API.
+
+<CodeGroup>
+```bash CLI
+# Agent key (saved automatically during owlmetry auth verify)
+owlmetry auth verify --endpoint http://localhost:4000 --email you@example.com --code 847291
+```
+
+```bash API
+curl -X POST https://api.yourdomain.com/v1/auth/keys \
+  -H "Cookie: token=<jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "CI Agent Key",
+    "key_type": "agent",
+    "team_id": "<team-id>",
+    "permissions": ["events:read", "projects:read", "apps:read"]
+  }'
+```
+
+```bash Revoke
+curl -X DELETE https://api.yourdomain.com/v1/auth/keys/<key-id> \
+  -H "Cookie: token=<jwt>"
+```
+</CodeGroup>
+
+The full key value is returned **once** at creation time. Store it securely — the server only stores a hash.
+
+## Team invitations
+
+Admins can invite new members by email. The invitation system works as follows:
+
+<Steps>
+  <Step title="Admin creates an invitation">
+    `POST /v1/teams/:teamId/invitations` with `{ email, role }`. The server generates a unique token and sends an invitation email.
+  </Step>
+  <Step title="Token is valid for 7 days">
+    Invitations expire after 7 days. Admins can resend by calling the same endpoint — the existing invitation is replaced.
+  </Step>
+  <Step title="Invitee accepts">
+    The invitee visits the accept URL (handled by the dashboard) and calls `POST /v1/invites/accept` with their JWT. They are added to the team with the invited role.
+  </Step>
+</Steps>
+
+<Tip>
+During the CLI authentication flow (`owlmetry auth verify`), OwlMetry provisions an agent key automatically. New users also get a default team, project, and app created at the same time — so your agent can start working immediately.
+</Tip>

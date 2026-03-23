@@ -1,0 +1,85 @@
+---
+title: "Get an Event"
+description: "Retrieve a single event by its UUID, including all stored fields."
+---
+
+`GET /v1/events/:id`
+
+**Auth:** Agent key (`events:read`) or JWT
+
+Fetches the full event record for a given UUID. The event must belong to an
+app that is accessible to your credentials.
+
+## Path parameters
+
+<ParamField path="id" type="string" required>
+  The event UUID.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">Event UUID.</ResponseField>
+<ResponseField name="app_id" type="string">App that received the event.</ResponseField>
+<ResponseField name="session_id" type="string">Session UUID.</ResponseField>
+<ResponseField name="user_id" type="string | null">User identifier, or `null` if none was provided.</ResponseField>
+<ResponseField name="api_key_id" type="string | null">ID of the API key used to ingest this event.</ResponseField>
+<ResponseField name="level" type="string">`info` | `debug` | `warn` | `error`</ResponseField>
+<ResponseField name="message" type="string">Log message or event name.</ResponseField>
+<ResponseField name="source_module" type="string | null">Module or component that emitted the event.</ResponseField>
+<ResponseField name="screen_name" type="string | null">Active screen or route at the time of the event.</ResponseField>
+<ResponseField name="environment" type="string | null">Runtime environment (`ios`, `android`, `web`, etc.).</ResponseField>
+<ResponseField name="app_version" type="string | null">App version string.</ResponseField>
+<ResponseField name="build_number" type="string | null">Build number.</ResponseField>
+<ResponseField name="os_version" type="string | null">OS version string.</ResponseField>
+<ResponseField name="device_model" type="string | null">Device model identifier.</ResponseField>
+<ResponseField name="locale" type="string | null">BCP 47 locale tag.</ResponseField>
+<ResponseField name="is_dev" type="boolean">Whether this was a development-build event.</ResponseField>
+<ResponseField name="custom_attributes" type="object | null">Key-value map of custom attributes attached at ingest time.</ResponseField>
+<ResponseField name="experiments" type="object | null">Experiment name → variant assignments at the time of the event.</ResponseField>
+<ResponseField name="client_event_id" type="string | null">Client-assigned deduplication UUID, if supplied.</ResponseField>
+<ResponseField name="timestamp" type="string">ISO 8601 timestamp of when the event occurred.</ResponseField>
+<ResponseField name="received_at" type="string">ISO 8601 timestamp of when OwlMetry received and stored the event.</ResponseField>
+
+## Example
+
+```bash
+curl https://api.yourdomain.com/v1/events/e1a2b3c4-0000-0000-0000-000000000101 \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json
+{
+  "id": "e1a2b3c4-0000-0000-0000-000000000101",
+  "app_id": "a9b8c7d6-0000-0000-0000-000000000042",
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "user_alice",
+  "api_key_id": "k9f8e7d6-0000-0000-0000-000000000055",
+  "level": "error",
+  "message": "Payment failed",
+  "source_module": "PaymentService",
+  "screen_name": "CheckoutScreen",
+  "environment": "ios",
+  "app_version": "2.1.0",
+  "build_number": "312",
+  "os_version": "17.4",
+  "device_model": "iPhone16,1",
+  "locale": "en-US",
+  "is_dev": false,
+  "custom_attributes": {
+    "error_code": "insufficient_funds",
+    "currency": "USD"
+  },
+  "experiments": {
+    "checkout_flow": "v2"
+  },
+  "client_event_id": "550e8400-e29b-41d4-a716-446655440002",
+  "timestamp": "2025-03-20T09:05:30.000Z",
+  "received_at": "2025-03-20T09:05:30.312Z"
+}
+```
+
+## Errors
+
+| Status | Meaning |
+|--------|--------|
+| `404`  | Event not found, or it belongs to an app your credentials cannot access. |

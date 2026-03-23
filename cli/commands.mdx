@@ -1,0 +1,742 @@
+---
+title: 'CLI commands'
+description: 'Complete reference for every OwlMetry CLI command, subcommand, and flag.'
+keywords: ['cli', 'commands', 'reference', 'flags', 'owlmetry']
+---
+
+This page documents every command available in `@owlmetry/cli`. All commands accept the [global flags](/cli/overview#global-flags): `--format`, `--endpoint`, `--api-key`, `--ingest-endpoint`, and `--team`.
+
+---
+
+## auth
+
+Authenticate with an OwlMetry server.
+
+### auth send-code
+
+Send a 6-digit verification code to an email address.
+
+```bash
+owlmetry auth send-code --email <email>
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--email <email>` | Yes | Email address to send the code to |
+
+**Example:**
+
+```bash
+owlmetry auth send-code --email alice@example.com
+```
+
+### auth verify
+
+Verify the code and save an agent API key to `~/.owlmetry/config.json`.
+
+```bash
+owlmetry auth verify --email <email> --code <code> [--team-id <id>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--email <email>` | Yes | Email address used to request the code |
+| `--code <code>` | Yes | 6-digit verification code |
+| `--team-id <id>` | No | Team ID to select when you belong to multiple teams |
+
+**Example:**
+
+```bash
+owlmetry auth verify --email alice@example.com --code 847291 --format json
+```
+
+On success, prints the API key, endpoint, ingest endpoint, and team info. Saves all credentials to config.
+
+---
+
+## setup
+
+Configure the CLI with an explicit endpoint and API key. Use this when you already have an `owl_agent_` key and don't need the email verification flow.
+
+```bash
+owlmetry setup --endpoint <url> --api-key <key> [--ingest-endpoint <url>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--endpoint <url>` | Yes | OwlMetry API server URL |
+| `--api-key <key>` | Yes | Agent API key (`owl_agent_...`) |
+| `--ingest-endpoint <url>` | No | Ingest endpoint for SDKs. Defaults to the API endpoint for self-hosted instances. |
+
+**Example:**
+
+```bash
+owlmetry setup \
+  --endpoint https://api.owlmetry.com \
+  --api-key owl_agent_abc123
+```
+
+`setup` validates the URL format, verifies connectivity by calling `whoami`, and writes the config.
+
+---
+
+## whoami
+
+Show the current authentication status and all configured team profiles.
+
+```bash
+owlmetry whoami
+```
+
+No additional flags. Prints the team name, key type, permissions, and a list of all configured profiles with an active indicator.
+
+---
+
+## switch
+
+List all configured team profiles, or switch the active profile.
+
+```bash
+owlmetry switch [team]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `[team]` | Team ID, slug, or name to switch to. Omit to list all profiles. |
+
+**Examples:**
+
+```bash
+# List all profiles
+owlmetry switch
+
+# Switch to a team by slug
+owlmetry switch acme-corp
+
+# Switch to a team by ID
+owlmetry switch team_abc123
+```
+
+---
+
+## projects
+
+Manage OwlMetry projects. Projects group apps by product and scope metrics and funnels.
+
+### projects (list)
+
+List all projects visible to your API key.
+
+```bash
+owlmetry projects
+```
+
+**Example:**
+
+```bash
+owlmetry projects --format json
+```
+
+### projects view
+
+View full details for a project, including its apps.
+
+```bash
+owlmetry projects view <id>
+```
+
+**Example:**
+
+```bash
+owlmetry projects view proj_abc123 --format json
+```
+
+### projects create
+
+Create a new project.
+
+```bash
+owlmetry projects create --name <name> --slug <slug> [--team-id <id>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name <name>` | Yes | Project display name |
+| `--slug <slug>` | Yes | Project slug (used in API paths) |
+| `--team-id <id>` | No | Team ID. Defaults to the active team. |
+
+**Example:**
+
+```bash
+owlmetry projects create \
+  --name "Acme Mobile" \
+  --slug acme-mobile \
+  --format json
+```
+
+### projects update
+
+Rename a project.
+
+```bash
+owlmetry projects update <id> --name <name>
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name <name>` | Yes | New project name |
+
+---
+
+## apps
+
+Manage apps within projects. Each app represents a single deployable artifact and has its own `owl_client_` key for SDK event ingestion.
+
+### apps (list)
+
+List all apps, optionally filtered by project.
+
+```bash
+owlmetry apps [--project <id>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <id>` | No | Filter by project ID |
+
+**Example:**
+
+```bash
+owlmetry apps --project proj_abc123 --format json
+```
+
+### apps view
+
+View full details for an app, including its client key.
+
+```bash
+owlmetry apps view <id>
+```
+
+### apps create
+
+Create a new app. The response includes a `client_key` (`owl_client_...`) — this is the key you pass to the SDK.
+
+```bash
+owlmetry apps create \
+  --project-id <id> \
+  --name <name> \
+  --platform <platform> \
+  [--bundle-id <bundleId>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project-id <id>` | Yes | Project ID |
+| `--name <name>` | Yes | App display name |
+| `--platform <platform>` | Yes | One of: `apple`, `android`, `web`, `backend` |
+| `--bundle-id <bundleId>` | Conditional | Bundle identifier. Required for `apple`, `android`, and `web`. Omit for `backend`. |
+
+<Note>
+The `bundle_id` is immutable after creation. To change it, delete the app and create a new one. The old `client_key` will stop working.
+</Note>
+
+**Example:**
+
+```bash
+# iOS app
+owlmetry apps create \
+  --project-id proj_abc123 \
+  --name "Acme iOS" \
+  --platform apple \
+  --bundle-id com.example.acme \
+  --format json
+
+# Backend service
+owlmetry apps create \
+  --project-id proj_abc123 \
+  --name "Acme API" \
+  --platform backend \
+  --format json
+```
+
+### apps update
+
+Rename an app.
+
+```bash
+owlmetry apps update <id> --name <name>
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name <name>` | Yes | New app name |
+
+---
+
+## events
+
+Query raw event logs emitted by SDKs.
+
+### events (list)
+
+Query events with optional filters. Defaults to the last 24 hours if neither `--since` nor `--until` is specified.
+
+```bash
+owlmetry events [options]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <id>` | — | Filter by project ID |
+| `--app <id>` | — | Filter by app ID |
+| `--since <time>` | `24h` | Start time. Accepts relative (`1h`, `30m`, `7d`) or ISO 8601. |
+| `--until <time>` | — | End time. Accepts relative or ISO 8601. |
+| `--level <level>` | — | Filter by log level: `debug`, `info`, `warn`, or `error` |
+| `--user <id>` | — | Filter by user ID |
+| `--session <id>` | — | Filter by session ID |
+| `--screen <name>` | — | Filter by screen name |
+| `--limit <n>` | — | Maximum number of events to return |
+| `--cursor <cursor>` | — | Pagination cursor from a previous response |
+| `--data-mode <mode>` | `production` | Filter by data mode: `production`, `development`, or `all` |
+
+**Examples:**
+
+```bash
+# Last hour of errors for a specific app
+owlmetry events --app app_abc123 --level error --since 1h --format log
+
+# All events for a user in the last 7 days
+owlmetry events --user user_42 --since 7d --format json
+
+# Paginate through results
+owlmetry events --limit 50 --cursor eyJpZCI6Ii4uLiJ9
+```
+
+### events view
+
+View the full detail of a single event by ID.
+
+```bash
+owlmetry events view <id>
+```
+
+**Example:**
+
+```bash
+owlmetry events view evt_abc123 --format json
+```
+
+---
+
+## investigate
+
+Show events surrounding a specific event — useful for understanding what happened immediately before and after an error.
+
+```bash
+owlmetry investigate <eventId> [--window <minutes>]
+```
+
+| Argument/Flag | Default | Description |
+|--------------|---------|-------------|
+| `<eventId>` | — | Target event ID (required) |
+| `--window <minutes>` | `5` | Time window in minutes around the target event |
+
+The command fetches the target event, then queries the same app and user for events within ±`window` minutes of the target's timestamp. Output defaults to `log` format when `--format table` is used.
+
+**Example:**
+
+```bash
+# See 10 minutes of context around an error
+owlmetry investigate evt_abc123 --window 10
+
+# Machine-readable output
+owlmetry investigate evt_abc123 --window 5 --format json
+```
+
+---
+
+## users
+
+List users who have sent events to a specific app.
+
+```bash
+owlmetry users <app-id> [options]
+```
+
+| Argument/Flag | Default | Description |
+|--------------|---------|-------------|
+| `<app-id>` | — | App ID (required) |
+| `--anonymous` | — | Show only anonymous users (`owl_anon_` IDs) |
+| `--real` | — | Show only identified (non-anonymous) users |
+| `--search <query>` | — | Search by user ID substring |
+| `--limit <n>` | — | Maximum number of users to return |
+| `--cursor <cursor>` | — | Pagination cursor |
+
+<Note>
+`--anonymous` and `--real` are mutually exclusive.
+</Note>
+
+**Examples:**
+
+```bash
+# All users for an app
+owlmetry users app_abc123
+
+# Only identified users matching a search
+owlmetry users app_abc123 --real --search alice --format json
+
+# Paginate through anonymous users
+owlmetry users app_abc123 --anonymous --limit 100
+```
+
+---
+
+## metrics
+
+Manage metric definitions and query metric data. Metrics are project-scoped and must be defined before the SDK can emit events for them.
+
+### metrics (list)
+
+List all metric definitions for a project.
+
+```bash
+owlmetry metrics --project <id>
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <id>` | Yes | Project ID |
+
+### metrics view
+
+View a metric definition including its documentation and aggregation rules.
+
+```bash
+owlmetry metrics view <slug> --project <id>
+```
+
+### metrics create
+
+Create a new metric definition.
+
+```bash
+owlmetry metrics create \
+  --project <id> \
+  --name <name> \
+  --slug <slug> \
+  [--description <desc>] \
+  [--docs <markdown>] \
+  [--lifecycle]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <id>` | Yes | Project ID |
+| `--name <name>` | Yes | Display name |
+| `--slug <slug>` | Yes | Metric slug. Lowercase letters, numbers, and hyphens only. |
+| `--description <desc>` | No | Short description |
+| `--docs <markdown>` | No | Markdown documentation for this metric |
+| `--lifecycle` | No | Mark as a lifecycle metric with start/complete/fail/cancel phases. Omit for single-shot metrics. |
+
+**Examples:**
+
+```bash
+# Lifecycle metric (tracks duration)
+owlmetry metrics create \
+  --project proj_abc123 \
+  --name "API request" \
+  --slug api-request \
+  --lifecycle \
+  --format json
+
+# Single-shot metric (point-in-time measurement)
+owlmetry metrics create \
+  --project proj_abc123 \
+  --name "Cache hit rate" \
+  --slug cache-hit-rate \
+  --format json
+```
+
+### metrics update
+
+Update a metric definition's name, description, or status.
+
+```bash
+owlmetry metrics update <slug> --project <id> [--name <name>] [--description <desc>] [--status <status>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <id>` | Yes | Project ID |
+| `--name <name>` | No | New display name |
+| `--description <desc>` | No | New description |
+| `--status <status>` | No | `active` or `paused` |
+
+### metrics delete
+
+Delete a metric definition.
+
+```bash
+owlmetry metrics delete <slug> --project <id>
+```
+
+### metrics query
+
+Query aggregated metric statistics: counts, success rates, duration percentiles, and error breakdowns.
+
+```bash
+owlmetry metrics query <slug> --project <id> [options]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <id>` | — | Project ID (required) |
+| `--since <date>` | — | Start date (ISO 8601) |
+| `--until <date>` | — | End date (ISO 8601) |
+| `--app <id>` | — | Filter by app ID |
+| `--app-version <version>` | — | Filter by app version |
+| `--device-model <model>` | — | Filter by device model |
+| `--os-version <version>` | — | Filter by OS version |
+| `--user <id>` | — | Filter by user ID |
+| `--environment <env>` | — | Filter by environment (`ios`, `ipados`, `macos`, `android`, `web`, `backend`) |
+| `--group-by <field>` | — | Group results by: `app_id`, `app_version`, `device_model`, `os_version`, `environment`, `time:hour`, `time:day`, `time:week` |
+| `--data-mode <mode>` | `production` | `production`, `development`, or `all` |
+
+**Example:**
+
+```bash
+# Aggregated stats for the last 7 days, grouped by day
+owlmetry metrics query api-request \
+  --project proj_abc123 \
+  --since 2026-03-16T00:00:00Z \
+  --group-by time:day \
+  --format json
+```
+
+### metrics events
+
+Query raw metric event records for debugging individual operations.
+
+```bash
+owlmetry metrics events <slug> --project <id> [options]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <id>` | — | Project ID (required) |
+| `--phase <phase>` | — | Filter by phase: `start`, `complete`, `fail`, `cancel`, or `record` |
+| `--tracking-id <id>` | — | Filter by tracking ID (links start/complete/fail events for one operation) |
+| `--user <id>` | — | Filter by user ID |
+| `--since <time>` | `24h` | Start time (relative or ISO 8601) |
+| `--until <time>` | — | End time |
+| `--environment <env>` | — | Filter by environment |
+| `--limit <n>` | — | Maximum events to return |
+| `--cursor <cursor>` | — | Pagination cursor |
+| `--data-mode <mode>` | `production` | `production`, `development`, or `all` |
+
+**Example:**
+
+```bash
+# All failed API request events from the last hour
+owlmetry metrics events api-request \
+  --project proj_abc123 \
+  --phase fail \
+  --since 1h \
+  --format json
+```
+
+---
+
+## funnels
+
+Manage funnel definitions and query conversion analytics. Funnels are project-scoped and must be defined before the SDK can emit events for them.
+
+### funnels (list)
+
+List all funnel definitions for a project.
+
+```bash
+owlmetry funnels --project <id>
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <id>` | Yes | Project ID |
+
+### funnels view
+
+View a funnel definition including all steps and event filters.
+
+```bash
+owlmetry funnels view <slug> --project <id>
+```
+
+### funnels create
+
+Create a new funnel definition.
+
+```bash
+owlmetry funnels create \
+  --project <id> \
+  --name <name> \
+  --slug <slug> \
+  --steps <json> \
+  [--description <desc>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <id>` | Yes | Project ID |
+| `--name <name>` | Yes | Display name |
+| `--slug <slug>` | Yes | Funnel slug. Lowercase letters, numbers, and hyphens only. |
+| `--steps <json>` | Yes | JSON array of step definitions (see format below) |
+| `--description <desc>` | No | Short description |
+
+Steps JSON format:
+
+```json
+[
+  { "name": "Viewed signup", "event_filter": { "message": "track:viewed-signup" } },
+  { "name": "Completed signup", "event_filter": { "message": "track:signup-completed" } },
+  { "name": "Activated", "event_filter": { "message": "track:activated" } }
+]
+```
+
+Each `event_filter` can match on `message` and/or `screen_name`. Maximum 20 steps per funnel.
+
+**Example:**
+
+```bash
+owlmetry funnels create \
+  --project proj_abc123 \
+  --name "Onboarding" \
+  --slug onboarding \
+  --steps '[{"name":"Started","event_filter":{"message":"track:signup-started"}},{"name":"Completed","event_filter":{"message":"track:signup-completed"}}]' \
+  --format json
+```
+
+### funnels update
+
+Update a funnel definition's name, description, or steps.
+
+```bash
+owlmetry funnels update <slug> --project <id> [--name <name>] [--description <desc>] [--steps <json>]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <id>` | Yes | Project ID |
+| `--name <name>` | No | New display name |
+| `--description <desc>` | No | New description |
+| `--steps <json>` | No | Replacement steps JSON array |
+
+### funnels delete
+
+Delete a funnel definition.
+
+```bash
+owlmetry funnels delete <slug> --project <id>
+```
+
+### funnels query
+
+Query funnel conversion analytics: step completion rates, drop-off counts, and optional grouping.
+
+```bash
+owlmetry funnels query <slug> --project <id> [options]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <id>` | — | Project ID (required) |
+| `--since <date>` | — | Start date (ISO 8601) |
+| `--until <date>` | — | End date (ISO 8601) |
+| `--open` | — | Use open funnel mode: each step evaluated independently, not sequentially |
+| `--app-version <version>` | — | Filter by app version |
+| `--environment <env>` | — | Filter by environment |
+| `--experiment <name:variant>` | — | Filter by experiment variant (format: `name:variant`) |
+| `--group-by <field>` | — | Group results by: `environment`, `app_version`, or `experiment:<name>` |
+| `--data-mode <mode>` | `production` | `production`, `development`, or `all` |
+
+**Examples:**
+
+```bash
+# Overall onboarding conversion for the last 30 days
+owlmetry funnels query onboarding \
+  --project proj_abc123 \
+  --since 2026-02-21T00:00:00Z \
+  --format table
+
+# Conversion broken down by app version
+owlmetry funnels query onboarding \
+  --project proj_abc123 \
+  --since 2026-02-21T00:00:00Z \
+  --group-by app_version \
+  --format json
+```
+
+---
+
+## audit-log
+
+Query the audit log for administrative actions on team resources.
+
+### audit-log list
+
+List audit log entries for a team.
+
+```bash
+owlmetry audit-log list --team <id> [options]
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--team <id>` | Yes | Team ID |
+| `--resource-type <type>` | No | Filter by resource type (e.g., `app`, `project`, `metric`) |
+| `--resource-id <id>` | No | Filter by specific resource ID |
+| `--actor <id>` | No | Filter by actor (user or API key) ID |
+| `--action <action>` | No | Filter by action: `create`, `update`, or `delete` |
+| `--since <time>` | No | Start time (relative or ISO 8601) |
+| `--until <time>` | No | End time (relative or ISO 8601) |
+| `--limit <n>` | No | Maximum entries to return |
+| `--cursor <cursor>` | No | Pagination cursor |
+
+<Note>
+Querying audit logs requires the `audit_logs:read` permission on your agent key. This permission is included in the default agent key permissions.
+</Note>
+
+**Examples:**
+
+```bash
+# All audit entries for a team
+owlmetry audit-log list --team team_abc123
+
+# Recent app creations
+owlmetry audit-log list \
+  --team team_abc123 \
+  --resource-type app \
+  --action create \
+  --since 7d \
+  --format json
+```
+
+---
+
+## skills
+
+Print the absolute file paths to the AI skill files bundled with the CLI.
+
+```bash
+owlmetry skills
+```
+
+No flags. Prints paths for three skill files:
+
+| Skill | Covers |
+|-------|--------|
+| CLI (`owlmetry-cli`) | Authentication, project/app management, querying |
+| Node SDK (`owlmetry-node`) | Node.js SDK integration and instrumentation |
+| Swift SDK (`owlmetry-swift`) | Swift SDK integration for iOS, iPadOS, and macOS |
+
+See [AI skills](/cli/ai-skills) for how to use these files with your agent.

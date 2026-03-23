@@ -1,0 +1,356 @@
+---
+title: "Swift SDK"
+description: "Native Swift SDK for iOS, iPadOS, and macOS (OwlMetry). Distributed as a Swift Package."
+---
+
+## Installation
+
+Add the OwlMetry Swift package to your Xcode project or `Package.swift`.
+
+<Steps>
+
+<Step title="Add the package dependency">
+
+In Xcode, go to **File → Add Package Dependencies** and enter the URL of your self-hosted OwlMetry repository.
+
+Or add it to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/your-org/owlmetry", from: "1.0.0"),
+],
+targets: [
+    .target(
+        name: "YourApp",
+        dependencies: [
+            .product(name: "OwlMetry", package: "owlmetry"),
+        ]
+    ),
+]
+```
+
+The package requires iOS 16+ or macOS 13+.
+
+</Step>
+
+<Step title="Create a client API key">
+
+Create an Apple-platform app in OwlMetry (via the dashboard, CLI, or API) and copy the generated `owl_client_` key.
+
+</Step>
+
+</Steps>
+
+---
+
+## Configuration
+
+Call `Owl.configure()` once at app startup, typically in your `AppDelegate` or the `init()` of your `@main App` struct. It is a `throws` function — wrap it in a `do/catch` or use `try!` for fatal misconfiguration.
+
+```swift
+import OwlMetry
+
+@main
+struct MyApp: App {
+    init() {
+        try! Owl.configure(
+            endpoint: "https://ingest.owlmetry.com",
+            apiKey: "owl_client_xxx"
+        )
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+```
+
+**Full signature:**
+
+```swift
+public static func configure(
+    endpoint: String,
+    apiKey: String,
+    flushOnBackground: Bool = true,
+    compressionEnabled: Bool = true,
+    networkTrackingEnabled: Bool = true
+) throws
+```
+
+### Configuration parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `endpoint` | `String` | — | Your OwlMetry server URL. Must be a valid URL. |
+| `apiKey` | `String` | — | Client API key. Must start with `owl_client_`. |
+| `flushOnBackground` | `Bool` | `true` | Flush buffered events when the app enters the background. Registers a `UIApplication.didEnterBackgroundNotification` observer. |
+| `compressionEnabled` | `Bool` | `true` | Gzip-compress payloads larger than 512 bytes before sending. |
+| `networkTrackingEnabled` | `Bool` | `true` | Install `URLSession` instrumentation to track outbound network requests (iOS/macOS only, uses Objective-C runtime). |
+
+### `ConfigurationError`
+
+`Owl.configure()` throws a `ConfigurationError` if validation fails:
+
+```swift
+public enum ConfigurationError: LocalizedError {
+    case invalidEndpoint(String)   // The endpoint string is not a valid URL
+    case invalidApiKey(String)     // The key does not start with "owl_client_"
+    case missingBundleId           // Bundle.main.bundleIdentifier is nil or empty
+}
+```
+
+<Note>
+  Each `Owl.configure()` call generates a new `session_id` UUID. If you call it more than once, the previous transport is shut down asynchronously before the new one starts.
+</Note>
+
+---
+
+## Logging
+
+Four log-level methods are available. The `message` is a plain string. `screenName` and `customAttributes` are both optional.
+
+```swift
+Owl.info("User signed up", customAttributes: ["plan": "pro"])
+Owl.debug("Cache miss", screenName: "ProfileView", customAttributes: ["key": "user:123"])
+Owl.warn("Retry limit approaching", customAttributes: ["endpoint": "/v1/ingest"])
+Owl.error("Payment failed", customAttributes: ["reason": "insufficient_funds"])
+```
+
+**Method signatures (all four levels follow this pattern):**
+
+```swift
+public static func info(
+    _ message: String,
+    screenName: String? = nil,
+    customAttributes: [String: String]? = nil,
+    file: String = #file,
+    function: String = #function,
+    line: Int = #line
+)
+```
+
+The `file`, `function`, and `line` parameters are filled in automatically by the compiler — you never pass them manually. The SDK records them as `_file`, `_function`, and `_line` attributes on the event.
+
+<Tip>
+  Custom attribute values are truncated to **200 characters**. The SDK also appends `_connection` (current network type: `wifi`, `cellular`, `ethernet`, `offline`, or `unknown`) to every event's attributes automatically.
+</Tip>
+
+All logging methods are safe to call from any thread. They never throw and never block the caller.
+
+### SwiftUI screen tracking
+
+Attach `.owlScreen(_:)` to the outermost view of each screen to automatically emit `sdk:screen_appeared` and `sdk:screen_disappeared` events with `_duration_ms`:
+
+```swift
+struct HomeView: View {
+    var body: some View {
+        VStack {
+            // ...
+        }
+        .owlScreen("Home")
+    }
+}
+```
+
+---
+
+## User Identity
+
+By default the SDK identifies users with a stable anonymous ID (`owl_anon_<UUID>`) stored in the Keychain. It survives app reinstalls.
+
+Call `Owl.setUser()` after your app's login flow to link events to a known user. This persists the ID to UserDefaults and fires a server-side identity claim to retroactively associate all prior anonymous events with that user.
+
+```swift
+// After a successful login
+Owl.setUser("user_123")
+
+// On logout — reverts to the same anonymous ID
+Owl.clearUser()
+
+// On logout from a shared device — generates a fresh anonymous ID
+Owl.clearUser(newAnonymousId: true)
+```
+
+**Signatures:**
+
+```swift
+public static func setUser(_ identifier: String)
+public static func clearUser(newAnonymousId: Bool = false)
+```
+
+---
+
+## Funnel Tracking
+
+Track named funnel steps with `Owl.track()`. Internally this sends an `info`-level event with the message `track:<stepName>`.
+
+```swift
+Owl.track("signup-started")
+Owl.track("email-verified", attributes: ["method": "magic-link"])
+Owl.track("signup-completed", attributes: ["plan": "pro"])
+```
+
+**Signature:**
+
+```swift
+public static func track(
+    _ stepName: String,
+    attributes: [String: String]? = nil,
+    file: String = #file,
+    function: String = #function,
+    line: Int = #line
+)
+```
+
+---
+
+## Structured Metrics
+
+### Lifecycle operations
+
+Use `Owl.startOperation()` to track work with a measurable duration. The returned `Operation` object records the start time and emits structured events at each stage.
+
+```swift
+let op = Owl.startOperation("image-upload", attributes: ["format": "heic"])
+
+do {
+    try await uploadImage(data)
+    op.complete(attributes: ["size_bytes": String(data.count)])
+} catch {
+    op.fail(error: error.localizedDescription)
+}
+
+// Cancel when the user aborts
+op.cancel(attributes: ["reason": "user-cancelled"])
+```
+
+**`Operation` class:**
+
+```swift
+public final class Operation: Sendable {
+    public let trackingId: String  // UUID linking start/complete/fail/cancel events
+
+    public func complete(
+        attributes: [String: String]? = nil,
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    )
+
+    public func fail(
+        error: String,
+        attributes: [String: String]? = nil,
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    )
+
+    public func cancel(
+        attributes: [String: String]? = nil,
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    )
+}
+```
+
+`duration_ms` and `tracking_id` are added automatically to all terminal events (`complete`, `fail`, `cancel`). Duration is measured with `ContinuousClock` for high-resolution timing.
+
+<Note>
+  Metric slugs must contain only lowercase letters, numbers, and hyphens (e.g. `"image-upload"`, `"api-request"`). Invalid characters are auto-corrected and a warning is logged via the system logger.
+</Note>
+
+### Single-shot metrics
+
+For point-in-time measurements that don't need a start/end lifecycle:
+
+```swift
+Owl.recordMetric("cache-hit", attributes: ["key": "user:123:profile"])
+Owl.recordMetric("queue-depth", attributes: ["depth": "47"])
+```
+
+**Signature:**
+
+```swift
+public static func recordMetric(
+    _ metric: String,
+    attributes: [String: String]? = nil,
+    file: String = #file,
+    function: String = #function,
+    line: Int = #line
+)
+```
+
+---
+
+## A/B Experiments
+
+The SDK provides lightweight client-side experiment assignment. Variants are picked randomly on the first call and persisted to the **Keychain** (surviving reinstalls). All events automatically include the active experiment assignments.
+
+```swift
+// Get (or assign) a variant — random on first call, stable thereafter
+let variant = Owl.getVariant("onboarding-flow", options: ["control", "streamlined"])
+
+if variant == "streamlined" {
+    // Show new onboarding flow
+} else {
+    // Show existing onboarding flow
+}
+
+// Force a specific variant (e.g. from a server-side flag)
+Owl.setExperiment("onboarding-flow", variant: "streamlined")
+
+// Reset all assignments (e.g. in tests or QA builds)
+Owl.clearExperiments()
+```
+
+**Signatures:**
+
+```swift
+@discardableResult
+public static func getVariant(_ name: String, options: [String]) -> String
+
+public static func setExperiment(_ name: String, variant: String)
+
+public static func clearExperiments()
+```
+
+<Tip>
+  Once a variant is assigned, calling `getVariant()` again with different `options` will return the already-stored variant. The `options` array is only consulted on the very first call for a given experiment name.
+</Tip>
+
+---
+
+## Transport
+
+The SDK buffers events in memory inside a Swift `actor` and delivers them in batches:
+
+- **Flush interval:** every **5 seconds**
+- **Batch trigger:** when the buffer reaches **20 events**
+- **Batch size:** up to **20 events** per HTTP request
+- **Max buffer size:** **10,000 events** in memory; oldest are dropped when exceeded
+- **Gzip compression:** payloads larger than **512 bytes** are gzip-compressed when `compressionEnabled: true` (the default)
+- **Retries:** up to **5 attempts** with exponential backoff (1s, 2s, 4s, 8s, 16s, capped at 30s). 4xx client errors are not retried.
+- **Offline support:** when no network is available, events are written to an on-disk queue (`OfflineQueue`) in the app's Application Support directory and replayed on the next flush
+- **Background flush:** when `flushOnBackground: true`, the SDK acquires a background task on `UIApplication.didEnterBackgroundNotification` and flushes all buffered events before the OS suspends the app
+- **Session ID:** a new `session_id` UUID is generated on each `Owl.configure()` call
+
+---
+
+## Shutdown
+
+Call `Owl.shutdown()` to stop the flush timer and deliver all buffered events before your process exits.
+
+```swift
+await Owl.shutdown()
+```
+
+**Signature:**
+
+```swift
+public static func shutdown() async
+```
+
+For typical iOS/macOS apps, `shutdown()` is only needed in unit tests or command-line tools. In foreground apps the `flushOnBackground` observer and the `willTerminateNotification` handler persist events to disk on termination automatically.

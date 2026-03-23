@@ -1,0 +1,96 @@
+---
+title: "POST /v1/auth/verify-code"
+description: "Verify an email code and receive a session JWT for the web dashboard."
+---
+
+`POST /v1/auth/verify-code`
+
+**Auth:** None required
+
+Validates the 6-digit code sent to the user's email and authenticates them. If the email has no existing account, a new user and a default team are created automatically.
+
+On success the server sets an HTTP-only cookie named `token` containing the JWT (7-day expiry). The same token is also returned in the response body.
+
+<Note>
+  New users receive a `201 Created` status. Returning users receive `200 OK`. Check `is_new_user` in the response to distinguish the two cases.
+</Note>
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  The email address the code was sent to.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The 6-digit verification code received by email.
+</ParamField>
+
+## Response
+
+<ResponseField name="token" type="string">
+  Signed JWT. Include as a Bearer token in the `Authorization` header for subsequent authenticated requests, or let the browser use the cookie automatically.
+</ResponseField>
+
+<ResponseField name="is_new_user" type="boolean">
+  `true` if a new account was created during this request.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The authenticated user's profile.
+
+  <Expandable title="user fields">
+    <ResponseField name="user.id" type="string">UUID of the user.</ResponseField>
+    <ResponseField name="user.email" type="string">Email address.</ResponseField>
+    <ResponseField name="user.name" type="string">Display name, derived from the email local-part on first signup.</ResponseField>
+    <ResponseField name="user.created_at" type="string">ISO 8601 timestamp.</ResponseField>
+    <ResponseField name="user.updated_at" type="string">ISO 8601 timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="teams" type="array">
+  Team memberships for the authenticated user.
+
+  <Expandable title="teams[] fields">
+    <ResponseField name="teams[].id" type="string">Team UUID.</ResponseField>
+    <ResponseField name="teams[].name" type="string">Team display name.</ResponseField>
+    <ResponseField name="teams[].slug" type="string">URL-safe team identifier.</ResponseField>
+    <ResponseField name="teams[].role" type="string">The caller's role in this team. One of `owner`, `admin`, or `member`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"email and code required"` — one or both fields are missing. |
+| `401`  | `"Invalid or expired code"` — the code is wrong, already used, or older than 10 minutes. |
+
+## Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/auth/verify-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "code": "483921"}'
+```
+
+```json Response
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "is_new_user": false,
+  "user": {
+    "id": "usr_01hx...",
+    "email": "alice@example.com",
+    "name": "Alice",
+    "created_at": "2024-03-01T10:00:00.000Z",
+    "updated_at": "2024-03-01T10:00:00.000Z"
+  },
+  "teams": [
+    {
+      "id": "tm_01hx...",
+      "name": "Alice's Team",
+      "slug": "alice-01hx",
+      "role": "owner"
+    }
+  ]
+}
+```

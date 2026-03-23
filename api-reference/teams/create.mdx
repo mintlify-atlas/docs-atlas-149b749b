@@ -1,0 +1,76 @@
+---
+title: "POST /v1/teams"
+description: "Create a new team. The caller becomes the team owner."
+---
+
+`POST /v1/teams`
+
+**Auth:** JWT (Bearer token or `token` cookie)
+
+Creates a new team and adds the authenticated user as its owner.
+
+<Note>
+  Team slugs must be globally unique. If the slug is already taken the server returns `409 Conflict`.
+</Note>
+
+## Request body
+
+<ParamField body="name" type="string" required>
+  The display name for the team (e.g. `"Acme Engineering"`).
+</ParamField>
+
+<ParamField body="slug" type="string" required>
+  A URL-safe identifier for the team. Must match the pattern `^[a-z0-9-]+$` — lowercase letters, numbers, and hyphens only.
+</ParamField>
+
+## Response
+
+Returns `201 Created`.
+
+<ResponseField name="id" type="string">
+  UUID of the newly created team.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Team display name.
+</ResponseField>
+
+<ResponseField name="slug" type="string">
+  URL-safe team identifier.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 creation timestamp.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 last-updated timestamp.
+</ResponseField>
+
+## Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"name and slug are required"` |
+| `400`  | `"slug must contain only lowercase letters, numbers, and hyphens"` |
+| `403`  | `"Only users can create teams"` — request was made with an API key. |
+| `409`  | `"A team with this slug already exists"` |
+
+## Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/teams \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Acme Engineering", "slug": "acme-eng"}'
+```
+
+```json Response
+{
+  "id": "tm_01hx...",
+  "name": "Acme Engineering",
+  "slug": "acme-eng",
+  "created_at": "2024-06-15T14:00:00.000Z",
+  "updated_at": "2024-06-15T14:00:00.000Z"
+}
+```

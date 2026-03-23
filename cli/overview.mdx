@@ -1,0 +1,100 @@
+---
+title: 'CLI overview'
+description: 'A thin HTTP client over the OwlMetry API, designed for both AI agents and humans.'
+keywords: ['cli', 'owlmetry', 'agent', 'observability', 'json', 'table']
+---
+
+The OwlMetry CLI is a thin HTTP client over the OwlMetry API. Every operation the web dashboard can perform, the CLI can too — which means your coding agent can do it all programmatically, without a human touching a browser.
+
+## Install
+
+```bash
+npm install -g @owlmetry/cli
+```
+
+**Requires Node.js 20 or later.**
+
+## Two audiences, one tool
+
+The CLI is designed for two distinct audiences and switches between them with a single flag.
+
+<Columns cols={2}>
+  <Card title="AI agents" icon="robot">
+    Use `--format json` to get machine-readable output. Every command returns structured JSON that an agent can parse, branch on, and feed into the next command. No screen-scraping required.
+  </Card>
+  <Card title="Humans" icon="user">
+    The default `--format table` renders aligned tables and color-coded output in your terminal. Use `--format log` when tailing events to get timestamped, color-coded log lines.
+  </Card>
+</Columns>
+
+## Output formats
+
+All commands accept a global `--format` flag:
+
+| Format | Best for | Description |
+|--------|----------|-------------|
+| `table` | Humans | Aligned columns with color highlighting. **Default.** |
+| `json` | Agents | Raw JSON printed to stdout. Errors go to stderr as JSON. |
+| `log` | Event tailing | Timestamped, color-coded log lines. Designed for `events` and `investigate`. |
+
+```bash
+# Human-readable table
+owlmetry events --since 1h
+
+# Machine-readable JSON
+owlmetry events --since 1h --format json
+
+# Color-coded log lines
+owlmetry events --since 1h --format log
+```
+
+## Key use cases
+
+<AccordionGroup>
+  <Accordion title="For AI agents">
+    Agents use the CLI as the primary interface for the full OwlMetry setup and query workflow:
+
+    - **Onboarding** — authenticate with `auth send-code` + `auth verify`, create a project and app, configure the SDK in the codebase
+    - **Monitoring** — poll `events` filtered by level, app, or time window to detect regressions
+    - **Incident investigation** — use `investigate <eventId>` to pull a time window of context around a specific error
+    - **Performance analysis** — run `metrics query` with `--group-by time:day` to spot trends across versions
+    - **Funnel inspection** — run `funnels query` to measure conversion drop-off between steps
+
+    Every command outputs valid JSON when `--format json` is set. Errors exit with a non-zero code and print `{ "error": "...", "status": 404 }` to stderr.
+  </Accordion>
+  <Accordion title="For humans">
+    Humans use the CLI for fast terminal access to data without opening a dashboard:
+
+    - Browse projects and apps with `owlmetry projects` and `owlmetry apps`
+    - Tail recent errors with `owlmetry events --level error --format log`
+    - Inspect a specific event with `owlmetry events view <id>`
+    - Review audit history with `owlmetry audit-log list --team <id>`
+    - Check authentication status with `owlmetry whoami`
+  </Accordion>
+</AccordionGroup>
+
+## AI skills integration
+
+The CLI ships with skill files — markdown documents that teach AI agents (Claude Code, Codex, and others) how to use OwlMetry end-to-end. Run `owlmetry skills` to print the absolute paths to each skill file, then point your agent at them.
+
+Skill files cover CLI setup and querying, Node.js SDK integration, and Swift SDK integration. With the skill files loaded, an agent can handle the complete setup flow without human intervention.
+
+```bash
+owlmetry skills
+```
+
+<Tip>
+See the [AI skills](/cli/ai-skills) page for details on what the skill files cover and how to use them with your agent.
+</Tip>
+
+## Global flags
+
+These flags are available on every command:
+
+| Flag | Description |
+|------|-------------|
+| `--format <format>` | Output format: `table` (default), `json`, or `log` |
+| `--endpoint <url>` | Override the OwlMetry API server URL |
+| `--api-key <key>` | Override the API key for this command |
+| `--ingest-endpoint <url>` | Override the ingest endpoint (used by SDKs) |
+| `--team <name-or-id>` | Use a specific team profile without switching the active profile |

@@ -1,0 +1,159 @@
+---
+title: 'Configuration'
+description: 'Complete reference for OwlMetry environment variables — required settings, optional features, and a full example .env file.'
+keywords: ['configuration', 'environment variables', 'env', 'settings', 'jwt', 'database']
+---
+
+OwlMetry is configured through a `.env` file at the root of `/opt/owlmetry`. Copy the example file to get started:
+
+```bash
+cp .env.example .env
+```
+
+## Required variables
+
+You must set these before starting the server.
+
+### `DATABASE_URL`
+
+PostgreSQL connection string. The setup script prints this after creating the database.
+
+```bash
+DATABASE_URL=postgresql://owlmetry:<password>@localhost:5432/owlmetry
+```
+
+### `JWT_SECRET`
+
+Random string used to sign authentication tokens. Generate one with:
+
+```bash
+openssl rand -base64 48
+```
+
+<Warning>
+Never reuse a JWT secret across environments or commit it to version control. Changing this value invalidates all existing sessions.
+</Warning>
+
+### `CORS_ORIGINS`
+
+Comma-separated list of allowed origins for the API. Set this to your dashboard URL.
+
+```bash
+CORS_ORIGINS=https://yourdomain.com
+```
+
+For multiple origins:
+
+```bash
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+```
+
+### `COOKIE_DOMAIN`
+
+Required when the API and dashboard are on different subdomains (the standard deployment). Set this to your root domain with a leading dot so the auth cookie is shared across subdomains.
+
+```bash
+COOKIE_DOMAIN=.yourdomain.com
+```
+
+## Server settings
+
+### `PORT`
+
+Port the API server listens on.
+
+- **Default:** `4000`
+- The nginx configuration proxies to this port — change both if you modify it.
+
+### `HOST`
+
+Bind address for the API server.
+
+- **Default:** `0.0.0.0`
+- Binds to all interfaces by default. Change to `127.0.0.1` to restrict to localhost only (safe when nginx is on the same machine).
+
+## Database settings
+
+### `MAX_DATABASE_SIZE_GB`
+
+Auto-prune event data when the database exceeds this size in gigabytes. OwlMetry drops the oldest monthly partitions first.
+
+- **Default:** `0` (disabled)
+- Set to a number greater than `0` to enable auto-pruning, e.g. `MAX_DATABASE_SIZE_GB=8`.
+- Auto-pruning runs hourly.
+
+<Note>
+Auto-pruning only removes event partitions. Schema tables and configuration data are never dropped.
+</Note>
+
+## Email settings
+
+### `RESEND_API_KEY`
+
+API key for [Resend](https://resend.com), used to send verification and invitation emails.
+
+- **Optional.** If unset, verification codes are printed to the server console instead of emailed. This is fine for single-user or internal setups.
+
+```bash
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### `EMAIL_FROM`
+
+From address used in outgoing emails.
+
+- **Default:** `noreply@owlmetry.com`
+- If you set `RESEND_API_KEY`, update this to a verified sender address on your domain.
+
+```bash
+EMAIL_FROM=noreply@yourdomain.com
+```
+
+### `WEB_APP_URL`
+
+Base URL of the web dashboard. Used to generate links in invitation emails.
+
+```bash
+WEB_APP_URL=https://yourdomain.com
+```
+
+## Complete example
+
+This is a full production `.env` file with all variables:
+
+```bash
+# Database
+DATABASE_URL=postgresql://owlmetry:your-db-password@localhost:5432/owlmetry
+
+# Auth
+JWT_SECRET=your-generated-64-char-secret
+COOKIE_DOMAIN=.yourdomain.com
+
+# Server
+PORT=4000
+HOST=0.0.0.0
+CORS_ORIGINS=https://yourdomain.com
+
+# Storage
+MAX_DATABASE_SIZE_GB=8
+
+# Email (optional — codes print to console if unset)
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+EMAIL_FROM=noreply@yourdomain.com
+WEB_APP_URL=https://yourdomain.com
+```
+
+## Variable reference
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | — | Secret for signing JWTs. Generate with `openssl rand -base64 48` |
+| `CORS_ORIGINS` | Yes | — | Comma-separated allowed origins for the API |
+| `COOKIE_DOMAIN` | Yes\* | — | Cookie domain for cross-subdomain auth (e.g. `.yourdomain.com`). Required when API and dashboard are on different subdomains |
+| `PORT` | No | `4000` | API server port |
+| `HOST` | No | `0.0.0.0` | API server bind address |
+| `MAX_DATABASE_SIZE_GB` | No | `0` | Auto-prune threshold in GB. `0` disables pruning |
+| `RESEND_API_KEY` | No | — | Resend API key for sending emails. If unset, codes print to console |
+| `EMAIL_FROM` | No | `noreply@owlmetry.com` | From address for outgoing emails |
+| `WEB_APP_URL` | No | — | Dashboard URL used in invitation email links |

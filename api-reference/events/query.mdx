@@ -1,0 +1,157 @@
+---
+title: "Query Events"
+description: "Search and paginate through ingested events with flexible filters."
+---
+
+`GET /v1/events`
+
+**Auth:** Agent key (`events:read`) or JWT
+
+Returns events across your team's apps with cursor-based pagination. Results
+are ordered by `timestamp` descending (newest first).
+
+## Query parameters
+
+<ParamField query="app_id" type="string">
+  Restrict results to a single app. The app must belong to one of your teams.
+</ParamField>
+
+<ParamField query="project_id" type="string">
+  Restrict results to all apps within a project.
+</ParamField>
+
+<ParamField query="team_id" type="string">
+  Restrict results to a specific team.
+</ParamField>
+
+<ParamField query="level" type="string">
+  Filter by severity. One of: `info`, `debug`, `warn`, `error`.
+</ParamField>
+
+<ParamField query="since" type="string">
+  ISO 8601 lower bound for `timestamp` (inclusive). For example,
+  `2025-03-20T00:00:00Z`.
+</ParamField>
+
+<ParamField query="until" type="string">
+  ISO 8601 upper bound for `timestamp` (inclusive).
+</ParamField>
+
+<ParamField query="user_id" type="string">
+  Return events for a specific user ID (exact match).
+</ParamField>
+
+<ParamField query="session_id" type="string">
+  Return events for a specific session UUID (exact match).
+</ParamField>
+
+<ParamField query="environment" type="string">
+  Filter by runtime environment. One of: `ios`, `ipados`, `macos`, `android`,
+  `web`, `backend`.
+</ParamField>
+
+<ParamField query="screen_name" type="string">
+  Filter by screen or route name (exact match).
+</ParamField>
+
+<ParamField query="data_mode" type="string">
+  Controls whether development events are included. One of: `production`
+  (default), `development`, `all`.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Number of results per page. Defaults to `50`, maximum `200`.
+</ParamField>
+
+<ParamField query="cursor" type="string">
+  ISO 8601 timestamp returned as `cursor` from the previous response. Pass
+  this value to fetch the next page.
+</ParamField>
+
+## Response
+
+<ResponseField name="events" type="array">
+  Page of event objects.
+  <Expandable title="Event object">
+    <ResponseField name="id" type="string">Event UUID.</ResponseField>
+    <ResponseField name="app_id" type="string">App that received the event.</ResponseField>
+    <ResponseField name="session_id" type="string">Session UUID.</ResponseField>
+    <ResponseField name="user_id" type="string | null">User identifier, or `null` if none was provided.</ResponseField>
+    <ResponseField name="level" type="string">`info` | `debug` | `warn` | `error`</ResponseField>
+    <ResponseField name="message" type="string">Log message or event name.</ResponseField>
+    <ResponseField name="source_module" type="string | null">Module that emitted the event.</ResponseField>
+    <ResponseField name="screen_name" type="string | null">Active screen or route.</ResponseField>
+    <ResponseField name="environment" type="string | null">Runtime environment.</ResponseField>
+    <ResponseField name="app_version" type="string | null">App version string.</ResponseField>
+    <ResponseField name="build_number" type="string | null">Build number.</ResponseField>
+    <ResponseField name="os_version" type="string | null">OS version string.</ResponseField>
+    <ResponseField name="device_model" type="string | null">Device model identifier.</ResponseField>
+    <ResponseField name="locale" type="string | null">BCP 47 locale tag.</ResponseField>
+    <ResponseField name="is_dev" type="boolean">Whether this was a development-build event.</ResponseField>
+    <ResponseField name="custom_attributes" type="object | null">Key-value map of custom attributes.</ResponseField>
+    <ResponseField name="experiments" type="object | null">Key-value map of experiment assignments.</ResponseField>
+    <ResponseField name="client_event_id" type="string | null">Client-assigned deduplication ID.</ResponseField>
+    <ResponseField name="timestamp" type="string">ISO 8601 event timestamp.</ResponseField>
+    <ResponseField name="received_at" type="string">ISO 8601 server receive timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cursor" type="string | null">
+  Pass as `cursor` on the next request to retrieve the following page.
+  `null` when you have reached the last page.
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  `true` when additional pages are available.
+</ResponseField>
+
+## Example
+
+```bash
+# Errors from the last hour
+curl "https://api.yourdomain.com/v1/events?app_id=a9b8c7d6-0000-0000-0000-000000000042&level=error&since=2025-03-20T08:00:00Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json
+{
+  "events": [
+    {
+      "id": "e1a2b3c4-0000-0000-0000-000000000101",
+      "app_id": "a9b8c7d6-0000-0000-0000-000000000042",
+      "session_id": "550e8400-e29b-41d4-a716-446655440000",
+      "user_id": "user_alice",
+      "level": "error",
+      "message": "Payment failed",
+      "source_module": "PaymentService",
+      "screen_name": "CheckoutScreen",
+      "environment": "ios",
+      "app_version": "2.1.0",
+      "build_number": "312",
+      "os_version": "17.4",
+      "device_model": "iPhone16,1",
+      "locale": "en-US",
+      "is_dev": false,
+      "custom_attributes": { "error_code": "insufficient_funds" },
+      "experiments": { "checkout_flow": "v2" },
+      "client_event_id": "550e8400-e29b-41d4-a716-446655440002",
+      "timestamp": "2025-03-20T09:05:30.000Z",
+      "received_at": "2025-03-20T09:05:30.312Z"
+    }
+  ],
+  "cursor": "2025-03-20T09:05:30.000Z",
+  "has_more": false
+}
+```
+
+```bash
+# Fetch the next page using the cursor
+curl "https://api.yourdomain.com/v1/events?app_id=a9b8c7d6-0000-0000-0000-000000000042&level=error&since=2025-03-20T08:00:00Z&cursor=2025-03-20T09%3A05%3A30.000Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+<Note>
+  The `cursor` value is a timestamp. If multiple events share the exact same
+  timestamp at a page boundary, those events may be split across pages.
+  For precise replay, filter by `since` / `until` in smaller time windows.
+</Note>

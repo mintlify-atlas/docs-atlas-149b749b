@@ -1,0 +1,191 @@
+---
+title: "GET, PATCH & DELETE /v1/teams/:teamId"
+description: "Retrieve, rename, or delete a team."
+---
+
+## GET /v1/teams/:teamId
+
+`GET /v1/teams/:teamId`
+
+**Auth:** JWT (any team member)
+
+Returns full details for a team, including the current member list and any pending invitations.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team.
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">Team UUID.</ResponseField>
+<ResponseField name="name" type="string">Team display name.</ResponseField>
+<ResponseField name="slug" type="string">URL-safe team identifier.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+<ResponseField name="updated_at" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+
+<ResponseField name="members" type="array">
+  All current team members.
+
+  <Expandable title="members[] fields">
+    <ResponseField name="user_id" type="string">User UUID.</ResponseField>
+    <ResponseField name="email" type="string">User email address.</ResponseField>
+    <ResponseField name="name" type="string">User display name.</ResponseField>
+    <ResponseField name="role" type="string">Role in the team: `owner`, `admin`, or `member`.</ResponseField>
+    <ResponseField name="joined_at" type="string">ISO 8601 timestamp when the member joined.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="pending_invitations" type="array">
+  Invitations that have been sent but not yet accepted and have not expired.
+
+  <Expandable title="pending_invitations[] fields">
+    <ResponseField name="id" type="string">Invitation UUID.</ResponseField>
+    <ResponseField name="team_id" type="string">Team UUID.</ResponseField>
+    <ResponseField name="email" type="string">Invited email address.</ResponseField>
+    <ResponseField name="role" type="string">Role the invitee will receive on acceptance.</ResponseField>
+    <ResponseField name="invited_by" type="object">`{ user_id, name, email }` of the user who sent the invitation.</ResponseField>
+    <ResponseField name="expires_at" type="string">ISO 8601 expiry timestamp.</ResponseField>
+    <ResponseField name="accepted_at" type="null">Always `null` for pending invitations.</ResponseField>
+    <ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `403`  | Caller is not a member of the team. |
+| `404`  | `"Team not found"` |
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/teams/tm_01hx... \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "id": "tm_01hx...",
+  "name": "Acme Engineering",
+  "slug": "acme-eng",
+  "created_at": "2024-06-01T10:00:00.000Z",
+  "updated_at": "2024-06-01T10:00:00.000Z",
+  "members": [
+    {
+      "user_id": "usr_01hx...",
+      "email": "alice@example.com",
+      "name": "Alice",
+      "role": "owner",
+      "joined_at": "2024-06-01T10:00:00.000Z"
+    }
+  ],
+  "pending_invitations": []
+}
+```
+
+---
+
+## PATCH /v1/teams/:teamId
+
+`PATCH /v1/teams/:teamId`
+
+**Auth:** JWT (admin or owner)
+
+Renames the team. Only the `name` field can be updated; the `slug` is immutable after creation.
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  New display name for the team.
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">Team UUID.</ResponseField>
+<ResponseField name="name" type="string">Updated display name.</ResponseField>
+<ResponseField name="slug" type="string">Unchanged slug.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+<ResponseField name="updated_at" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"At least one field to update is required"` — `name` was not provided. |
+| `403`  | `"Only users can update teams"` or caller lacks `admin`/`owner` role. |
+| `404`  | `"Team not found"` |
+
+### Example
+
+```bash
+curl -X PATCH https://api.yourdomain.com/v1/teams/tm_01hx... \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Acme Platform"}'
+```
+
+```json Response
+{
+  "id": "tm_01hx...",
+  "name": "Acme Platform",
+  "slug": "acme-eng",
+  "created_at": "2024-06-01T10:00:00.000Z",
+  "updated_at": "2024-06-15T14:00:00.000Z"
+}
+```
+
+---
+
+## DELETE /v1/teams/:teamId
+
+`DELETE /v1/teams/:teamId`
+
+**Auth:** JWT (owner only)
+
+Permanently deletes a team and all of its child resources (projects, apps, API keys, metric definitions, funnel definitions). Member records and pending invitations are hard-deleted immediately. All other records are soft-deleted.
+
+<Warning>
+  Deletion is irreversible. All projects, apps, and data associated with the team will be removed. You cannot delete your only team.
+</Warning>
+
+### Path parameters
+
+<ParamField path="teamId" type="string" required>
+  UUID of the team to delete.
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean">
+  Always `true` on success.
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"Cannot delete your only team"` — you must have at least one other team. |
+| `403`  | `"Only users can delete teams"` or caller does not have `owner` role. |
+| `404`  | `"Team not found"` |
+
+### Example
+
+```bash
+curl -X DELETE https://api.yourdomain.com/v1/teams/tm_01hx... \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "deleted": true
+}
+```

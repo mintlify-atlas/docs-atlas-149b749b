@@ -1,0 +1,120 @@
+---
+title: "List App Users"
+description: "Paginate through all users seen by an app, with optional filtering by type or user ID search."
+---
+
+`GET /v1/apps/:id/users`
+
+**Auth:** Agent key (`apps:read`) or JWT
+
+Returns a cursor-paginated list of users that have sent at least one event to
+this app. Users are automatically created when events are ingested and are
+ordered by `last_seen_at` descending (most recently active first).
+
+## Path parameters
+
+<ParamField path="id" type="string" required>
+  The app UUID.
+</ParamField>
+
+## Query parameters
+
+<ParamField query="limit" type="number">
+  Number of results per page. Defaults to `50`, maximum `200`.
+</ParamField>
+
+<ParamField query="cursor" type="string">
+  ISO 8601 timestamp returned as `cursor` in the previous response. Pass this
+  value to retrieve the next page.
+</ParamField>
+
+<ParamField query="search" type="string">
+  Case-insensitive substring match against `user_id`. Use this to find a
+  specific user or filter by ID prefix.
+</ParamField>
+
+<ParamField query="is_anonymous" type="string">
+  Filter by user type. Pass `"true"` to return only anonymous users
+  (`owl_anon_` prefix) or `"false"` to return only identified users.
+  Omit to return all users.
+</ParamField>
+
+## Response
+
+<ResponseField name="users" type="array">
+  Page of user objects.
+  <Expandable title="User object">
+    <ResponseField name="id" type="string">Internal record UUID.</ResponseField>
+    <ResponseField name="app_id" type="string">App UUID this user belongs to.</ResponseField>
+    <ResponseField name="user_id" type="string">
+      The identifier supplied by your app. Anonymous users carry the
+      `owl_anon_` prefix.
+    </ResponseField>
+    <ResponseField name="is_anonymous" type="boolean">
+      `true` if the user was created with an `owl_anon_` prefixed ID and has
+      not yet been claimed.
+    </ResponseField>
+    <ResponseField name="claimed_from" type="array | null">
+      List of anonymous IDs that were merged into this user via
+      `POST /v1/identity/claim`. `null` if no claims have been made.
+    </ResponseField>
+    <ResponseField name="first_seen_at" type="string">ISO 8601 timestamp of the first event received.</ResponseField>
+    <ResponseField name="last_seen_at" type="string">ISO 8601 timestamp of the most recent event.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cursor" type="string | null">
+  Pass this value as `cursor` on the next request to fetch the following page.
+  `null` when there are no more results.
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  `true` when additional pages are available.
+</ResponseField>
+
+## Example
+
+```bash
+# First page — real users only
+curl "https://api.yourdomain.com/v1/apps/a9b8c7d6-0000-0000-0000-000000000042/users?is_anonymous=false&limit=2" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json
+{
+  "users": [
+    {
+      "id": "u1a2b3c4-0000-0000-0000-000000000010",
+      "app_id": "a9b8c7d6-0000-0000-0000-000000000042",
+      "user_id": "user_alice",
+      "is_anonymous": false,
+      "claimed_from": ["owl_anon_9f8e7d6c5b4a3210"],
+      "first_seen_at": "2025-03-01T12:00:00.000Z",
+      "last_seen_at": "2025-03-20T17:45:00.000Z"
+    },
+    {
+      "id": "u2b3c4d5-0000-0000-0000-000000000011",
+      "app_id": "a9b8c7d6-0000-0000-0000-000000000042",
+      "user_id": "user_bob",
+      "is_anonymous": false,
+      "claimed_from": null,
+      "first_seen_at": "2025-03-10T08:00:00.000Z",
+      "last_seen_at": "2025-03-19T10:00:00.000Z"
+    }
+  ],
+  "cursor": "2025-03-19T10:00:00.000Z",
+  "has_more": true
+}
+```
+
+```bash
+# Second page — pass the cursor from the previous response
+curl "https://api.yourdomain.com/v1/apps/a9b8c7d6-0000-0000-0000-000000000042/users?is_anonymous=false&limit=2&cursor=2025-03-19T10%3A00%3A00.000Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+## Errors
+
+| Status | Meaning |
+|--------|--------|
+| `404`  | App not found or not accessible to your credentials. |

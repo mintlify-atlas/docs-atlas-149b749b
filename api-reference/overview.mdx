@@ -1,0 +1,164 @@
+---
+title: "API Reference"
+description: "Complete reference for the OwlMetry REST API — base URLs, request format, pagination, rate limits, and error handling."
+---
+
+## Base URL
+
+OwlMetry is self-hosted, so your base URL is the domain where you deployed the API server:
+
+```
+https://api.yourdomain.com
+```
+
+During local development the server runs on port `4000` by default:
+
+```
+http://localhost:4000
+```
+
+All versioned endpoints are prefixed with `/v1`. The health check endpoint sits at the root.
+
+## Health check
+
+Use the health endpoint to verify the server is running. It requires no authentication.
+
+```bash
+curl https://api.yourdomain.com/health
+```
+
+```json
+{ "status": "ok" }
+```
+
+## Request format
+
+All request and response bodies are JSON. Set the `Content-Type` header on any request with a body:
+
+```
+Content-Type: application/json
+```
+
+## Available endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/health` | None | Health check |
+| `POST` | `/v1/auth/send-code` | None | Send email verification code |
+| `POST` | `/v1/auth/verify-code` | None | Verify code and get JWT token |
+| `POST` | `/v1/auth/agent-login` | None | Verify code + provision agent API key (auto-creates project/app for new users) |
+| `POST` | `/v1/auth/logout` | None | Clear JWT token cookie |
+| `GET` | `/v1/auth/me` | JWT | Get current user profile + teams |
+| `PATCH` | `/v1/auth/me` | JWT | Update name |
+| `GET` | `/v1/auth/teams` | JWT | List user's teams |
+| `GET` | `/v1/auth/keys` | JWT | List API keys for user's teams |
+| `GET` | `/v1/auth/keys/:id` | JWT | Get single API key metadata |
+| `POST` | `/v1/auth/keys` | JWT (admin+) | Generate API key |
+| `PATCH` | `/v1/auth/keys/:id` | JWT (admin+) | Update API key name or permissions |
+| `DELETE` | `/v1/auth/keys/:id` | JWT (admin+) | Revoke an API key |
+| `POST` | `/v1/teams` | JWT | Create a new team |
+| `GET` | `/v1/teams/:teamId` | JWT | Get team details with members and pending invitations |
+| `PATCH` | `/v1/teams/:teamId` | JWT (admin+) | Rename team |
+| `DELETE` | `/v1/teams/:teamId` | JWT (owner) | Delete team |
+| `GET` | `/v1/teams/:id/members` | JWT | List team members |
+| `PATCH` | `/v1/teams/:id/members/:userId` | JWT (admin+) | Change member role |
+| `DELETE` | `/v1/teams/:id/members/:userId` | JWT (admin+) | Remove member (or self-leave) |
+| `GET` | `/v1/teams/:id/members/:userId/agent-keys` | JWT | List agent keys created by a member |
+| `POST` | `/v1/teams/:id/invitations` | JWT (admin+) | Create or resend team invitation |
+| `GET` | `/v1/teams/:id/invitations` | JWT | List pending invitations |
+| `DELETE` | `/v1/teams/:id/invitations/:invitationId` | JWT (admin+) | Revoke invitation |
+| `GET` | `/v1/invites/:token` | None | Get invitation details (public) |
+| `POST` | `/v1/invites/accept` | JWT | Accept invitation and join team |
+| `POST` | `/v1/ingest` | Client key | Batch ingest events |
+| `GET` | `/v1/events` | Agent key / JWT | Query events with filters |
+| `GET` | `/v1/events/:id` | Agent key / JWT | Get single event |
+| `GET` | `/v1/projects` | `projects:read` / JWT | List projects |
+| `GET` | `/v1/projects/:id` | `projects:read` / JWT | Get project with apps |
+| `POST` | `/v1/projects` | `projects:write` / JWT (admin+) | Create project (requires team_id in body) |
+| `PATCH` | `/v1/projects/:id` | `projects:write` / JWT (admin+) | Update project name |
+| `DELETE` | `/v1/projects/:id` | JWT only (admin+) | Soft-delete project and its apps |
+| `GET` | `/v1/apps` | `apps:read` / JWT | List apps |
+| `GET` | `/v1/apps/:id` | `apps:read` / JWT | Get single app |
+| `POST` | `/v1/apps` | `apps:write` / JWT (admin+) | Create app (requires project_id) |
+| `PATCH` | `/v1/apps/:id` | `apps:write` / JWT (admin+) | Update app name |
+| `DELETE` | `/v1/apps/:id` | JWT only (admin+) | Soft-delete app |
+| `GET` | `/v1/apps/:id/users` | `apps:read` / JWT | List app users (paginated) |
+| `POST` | `/v1/identity/claim` | Client key | Link anonymous events to a user ID |
+| `GET` | `/v1/projects/:projectId/funnels` | `funnels:read` / JWT | List funnel definitions for project |
+| `GET` | `/v1/projects/:projectId/funnels/:slug` | `funnels:read` / JWT | Get funnel definition |
+| `GET` | `/v1/funnels/by-id/:id` | `funnels:read` / JWT | Get funnel definition by ID |
+| `POST` | `/v1/projects/:projectId/funnels` | `funnels:write` / JWT (admin+) | Create funnel definition |
+| `PATCH` | `/v1/projects/:projectId/funnels/:slug` | `funnels:write` / JWT (admin+) | Update funnel definition |
+| `DELETE` | `/v1/projects/:projectId/funnels/:slug` | JWT only (admin+) | Soft-delete funnel definition |
+| `GET` | `/v1/projects/:projectId/funnels/:slug/query` | `funnels:read` / JWT | Query funnel analytics (drop-off rates, grouping, experiments) |
+| `GET` | `/v1/projects/:projectId/metrics` | `metrics:read` / JWT | List metric definitions for project |
+| `GET` | `/v1/projects/:projectId/metrics/:slug` | `metrics:read` / JWT | Get metric definition with docs |
+| `GET` | `/v1/metrics/by-id/:id` | `metrics:read` / JWT | Get metric definition by ID |
+| `POST` | `/v1/projects/:projectId/metrics` | `metrics:write` / JWT (admin+) | Create metric definition |
+| `PATCH` | `/v1/projects/:projectId/metrics/:slug` | `metrics:write` / JWT (admin+) | Update metric definition |
+| `DELETE` | `/v1/projects/:projectId/metrics/:slug` | JWT only (admin+) | Soft-delete metric definition |
+| `GET` | `/v1/projects/:projectId/metrics/:slug/query` | `metrics:read` / JWT | Aggregation endpoint (counts, rates, percentiles) |
+| `GET` | `/v1/projects/:projectId/metrics/:slug/events` | `metrics:read` / JWT | Raw metric events (paginated) |
+| `GET` | `/v1/teams/:teamId/audit-logs` | `audit_logs:read` / JWT (admin+) | Query audit log entries (paginated, cursor-based) |
+
+## Pagination
+
+Endpoints that return lists of records — `/v1/events`, `/v1/apps/:id/users`, `/v1/projects/:projectId/metrics/:slug/events`, and `/v1/teams/:teamId/audit-logs` — use cursor-based pagination.
+
+Pass these query parameters to control the result set:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | integer | Maximum number of records to return per page |
+| `cursor` | string | Opaque cursor returned by the previous page; omit on the first request |
+
+The response includes a `next_cursor` field when more records exist. Pass it as `cursor` on your next request to fetch the following page. When `next_cursor` is absent or `null`, you have reached the last page.
+
+```bash
+# First page
+curl -H "Authorization: Bearer owl_agent_..." \
+  "https://api.yourdomain.com/v1/events?limit=50"
+
+# Next page
+curl -H "Authorization: Bearer owl_agent_..." \
+  "https://api.yourdomain.com/v1/events?limit=50&cursor=<next_cursor>"
+```
+
+## Rate limits
+
+The API enforces a token-bucket rate limit per authenticated identity:
+
+| Property | Value |
+|----------|-------|
+| Bucket capacity | 100 requests |
+| Refill rate | 10 requests per second |
+| Scope | Per API key, per user session, or per IP (unauthenticated) |
+
+When you exceed the limit, the server responds with `429 Too Many Requests` and a `Retry-After: 1` header. Back off for at least one second before retrying.
+
+Verification code requests have an additional limit: a maximum of **5 codes per email address per hour**.
+
+## Error responses
+
+All error responses use a consistent JSON shape:
+
+```json
+{
+  "error": "A human-readable description of what went wrong"
+}
+```
+
+Common HTTP status codes:
+
+| Status | Meaning |
+|--------|---------|
+| `400` | Bad request — missing or invalid parameters |
+| `401` | Unauthorized — missing, invalid, or expired credentials |
+| `403` | Forbidden — authenticated but lacking the required role or permission |
+| `404` | Not found — resource does not exist or you do not have access to it |
+| `429` | Too many requests — rate limit exceeded |
+| `500` | Internal server error |
+
+<Note>
+  404 is also returned when you lack access to a resource, to avoid leaking information about resource existence.
+</Note>

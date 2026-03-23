@@ -1,0 +1,297 @@
+---
+title: 'VPS setup'
+description: 'Deploy OwlMetry on a self-hosted Ubuntu 24.04 VPS with nginx, pm2, and PostgreSQL.'
+keywords: ['self-hosting', 'vps', 'ubuntu', 'deploy', 'nginx', 'pm2', 'postgresql']
+---
+
+This guide walks you through deploying OwlMetry on your own VPS. By the end you will have:
+
+- API server at `api.yourdomain.com`
+- Ingest endpoint at `ingest.yourdomain.com`
+- Web dashboard at `yourdomain.com`
+
+Estimated time: 15–20 minutes.
+
+## Requirements
+
+- Ubuntu 24.04 LTS VPS with at least 1 GB RAM and 25 GB disk
+- A domain with 3 A records pointing to your VPS IP:
+  - `@` (root) → VPS IP
+  - `api` → VPS IP
+  - `ingest` → VPS IP
+- SSH access to the server as root
+
+<Steps>
+
+<Step title="Install system dependencies">
+
+Run the setup script as root. It installs Node.js 22, PostgreSQL 16, nginx, pm2, pnpm, creates the `owlmetry` database, and configures pm2 to start on boot.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Jasonvdb/owlmetry/main/deploy/setup-ubuntu-vps.sh -o setup-ubuntu-vps.sh
+bash setup-ubuntu-vps.sh
+```
+
+<Warning>
+Save the `DATABASE_URL` printed at the end of the script. It contains a randomly generated password that will not be shown again.
+</Warning>
+
+<Tip>
+The script is idempotent — safe to run again if it was interrupted.
+</Tip>
+
+</Step>
+
+<Step title="Clone and build">
+
+```bash
+cd /opt/owlmetry
+git clone https://github.com/Jasonvdb/owlmetry.git .
+pnpm install
+pnpm build
+```
+
+</Step>
+
+<Step title="Configure environment">
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and fill in your values. At minimum you need `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, and `COOKIE_DOMAIN`.
+
+```bash
+DATABASE_URL=postgresql://owlmetry:<password>@localhost:5432/owlmetry
+JWT_SECRET=<random-string>
+PORT=4000
+HOST=0.0.0.0
+CORS_ORIGINS=https://yourdomain.com
+MAX_DATABASE_SIZE_GB=8
+RESEND_API_KEY=<your-resend-key>
+EMAIL_FROM=noreply@yourdomain.com
+COOKIE_DOMAIN=.yourdomain.com
+```
+
+Generate a secure `JWT_SECRET`:
+
+```bash
+openssl rand -base64 48
+```
+
+See [Configuration](/deploy/configuration) for a full reference of all environment variables.
+
+</Step>
+
+<Step title="Run database migrations">
+
+```bash
+pnpm db:migrate
+```
+
+This creates all tables and the initial event partitions. Your first user account is created when you first log in via the dashboard.
+
+<Warning>
+Do not run `pnpm dev:seed` in production. The seed script creates demo users with API keys that are committed to the public repository and are publicly known.
+</Warning>
+
+</Step>
+
+<Step title="Configure nginx">
+
+Create the nginx configuration with three server blocks — one each for the API, ingest, and web dashboard:
+
+```bash
+cat > /etc/nginx/sites-available/owlmetry << 'NGINX'
+# OwlMetry API (agent keys, dashboard API, auth)
+server {
+    listen 80;
+    server_name api.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# OwlMetry Ingest (SDK client keys)
+server {
+    listen 80;
+    server_name ingest.yourdomain.com;
+
+    client_max_body_size 2m;
+
+    location / {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# OwlMetry Web Dashboard
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+NGINX
+```
+
+Enable the configuration and reload nginx:
+
+```bash
+ln -sf /etc/nginx/sites-available/owlmetry /etc/nginx/sites-enabled/owlmetry
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl reload nginx
+```
+
+</Step>
+
+<Step title="Create the pm2 ecosystem file">
+
+```bash
+cat > /opt/owlmetry/ecosystem.config.cjs << 'PM2'
+module.exports = {
+  apps: [
+    {
+      name: "owlmetry-api",
+      script: "apps/server/dist/index.js",
+      cwd: "/opt/owlmetry",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
+      name: "owlmetry-web",
+      script: "node_modules/.bin/next",
+      args: "start",
+      cwd: "/opt/owlmetry/apps/web",
+      env: {
+        NODE_ENV: "production",
+        PORT: 3000,
+      },
+    },
+  ],
+};
+PM2
+```
+
+</Step>
+
+<Step title="Start and persist services with pm2">
+
+```bash
+cd /opt/owlmetry
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+Verify both services are running:
+
+```bash
+pm2 status
+```
+
+You should see `owlmetry-api` and `owlmetry-web` both with status `online`.
+
+</Step>
+
+<Step title="Configure SSL">
+
+<Tabs>
+  <Tab title="Cloudflare (recommended)">
+  If you use Cloudflare in proxy mode, Cloudflare handles SSL termination. You can skip certbot entirely — nginx only needs to listen on port 80.
+
+  See [Cloudflare setup](#cloudflare-setup) below for the full configuration.
+  </Tab>
+  <Tab title="certbot">
+  If you are not using Cloudflare, install certbot to get Let's Encrypt certificates:
+
+  ```bash
+  apt install -y certbot python3-certbot-nginx
+  certbot --nginx -d yourdomain.com -d api.yourdomain.com -d ingest.yourdomain.com
+  ```
+  </Tab>
+</Tabs>
+
+</Step>
+
+<Step title="Verify the deployment">
+
+Test the API directly:
+
+```bash
+curl -s http://localhost:4000/health
+# Expected: {"status":"ok"}
+```
+
+Test nginx routing from a machine that can reach the server:
+
+```bash
+curl -s https://api.yourdomain.com/health
+curl -s https://ingest.yourdomain.com/health
+```
+
+Open `https://yourdomain.com` in a browser to see the dashboard.
+
+</Step>
+
+</Steps>
+
+## Cloudflare setup
+
+Cloudflare provides DDoS protection, CDN, and SSL termination — recommended for all production deployments.
+
+1. Add your domain to Cloudflare.
+2. Create 3 A records pointing to your VPS IP, all with **Proxy enabled** (orange cloud):
+   - `@` (root) → VPS IP
+   - `api` → VPS IP
+   - `ingest` → VPS IP
+3. Set SSL/TLS mode to **Full** (not Full Strict — you are not using certbot).
+4. Restrict your VPS firewall to only accept HTTP/HTTPS from Cloudflare IPs (see [Firewall](#firewall) below).
+
+## Firewall
+
+Restrict SSH to Tailscale and HTTP/HTTPS to Cloudflare IPs only:
+
+```bash
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow in on tailscale0 to any port 22 proto tcp
+
+# Allow Cloudflare IPs only
+for cidr in $(curl -s https://www.cloudflare.com/ips-v4/); do
+  ufw allow from "$cidr" to any port 80,443 proto tcp
+done
+for cidr in $(curl -s https://www.cloudflare.com/ips-v6/); do
+  ufw allow from "$cidr" to any port 80,443 proto tcp
+done
+
+ufw --force enable
+```
+
+<Note>
+This firewall configuration assumes you access the VPS over Tailscale. If you use a different VPN or direct SSH, adjust the SSH rule accordingly before enabling ufw.
+</Note>

@@ -1,0 +1,336 @@
+---
+title: "API Keys"
+description: "Create, list, update, and revoke API keys for your teams."
+---
+
+API keys authenticate non-browser clients (agents, SDKs) against OwlMetry. Two key types exist:
+
+| Type | Prefix | Default permissions |
+|------|--------|--------------------|
+| `client` | `owl_client_` | `events:write` |
+| `agent` | `owl_agent_` | All read/write permissions except `audit_logs:read` is agent-only |
+
+<Note>
+  All key management endpoints require JWT (user) auth. API keys themselves cannot manage other keys.
+</Note>
+
+---
+
+## GET /v1/auth/keys
+
+`GET /v1/auth/keys`
+
+**Auth:** JWT
+
+Lists all active (non-revoked) API keys across all teams the caller belongs to. Use the optional `team_id` query parameter to scope results to a single team.
+
+### Query parameters
+
+<ParamField query="team_id" type="string">
+  Filter results to a specific team. If the caller is not a member of this team, an empty list is returned.
+</ParamField>
+
+### Response
+
+<ResponseField name="api_keys" type="array">
+  List of API key metadata objects. The raw key value is never returned after creation.
+
+  <Expandable title="api_keys[] fields">
+    <ResponseField name="id" type="string">Key UUID.</ResponseField>
+    <ResponseField name="key_prefix" type="string">The non-secret prefix (e.g. `owl_agent_abc123`). Use this to identify a key without exposing it.</ResponseField>
+    <ResponseField name="key_type" type="string">`client` or `agent`.</ResponseField>
+    <ResponseField name="name" type="string">Human-readable label.</ResponseField>
+    <ResponseField name="team_id" type="string">Team this key belongs to.</ResponseField>
+    <ResponseField name="app_id" type="string | null">App this key is scoped to (client keys only).</ResponseField>
+    <ResponseField name="app_name" type="string | null">Resolved app name, if applicable.</ResponseField>
+    <ResponseField name="created_by" type="string | null">User UUID of the creator.</ResponseField>
+    <ResponseField name="created_by_email" type="string | null">Email of the creator.</ResponseField>
+    <ResponseField name="permissions" type="array">List of permission strings granted to this key.</ResponseField>
+    <ResponseField name="last_used_at" type="string | null">ISO 8601 timestamp of last authenticated request, or `null` if never used.</ResponseField>
+    <ResponseField name="expires_at" type="string | null">ISO 8601 expiry timestamp, or `null` for non-expiring keys.</ResponseField>
+    <ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+    <ResponseField name="updated_at" type="string">ISO 8601 last-updated timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/auth/keys \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "api_keys": [
+    {
+      "id": "key_01hx...",
+      "key_prefix": "owl_agent_abc123",
+      "key_type": "agent",
+      "name": "CI Agent",
+      "team_id": "tm_01hx...",
+      "app_id": null,
+      "app_name": null,
+      "created_by": "usr_01hx...",
+      "created_by_email": "alice@example.com",
+      "permissions": ["events:read", "metrics:read", "metrics:write"],
+      "last_used_at": "2024-06-15T09:00:00.000Z",
+      "expires_at": null,
+      "created_at": "2024-03-01T10:00:00.000Z",
+      "updated_at": "2024-03-01T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## GET /v1/auth/keys/:id
+
+`GET /v1/auth/keys/:id`
+
+**Auth:** JWT
+
+Returns metadata for a single API key. Returns `404` if the key does not exist, is revoked, or belongs to a team the caller is not a member of.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the API key.
+</ParamField>
+
+### Response
+
+<ResponseField name="api_key" type="object">
+  Single API key metadata (same shape as items in the list endpoint).
+</ResponseField>
+
+### Example
+
+```bash
+curl https://api.yourdomain.com/v1/auth/keys/key_01hx... \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "api_key": {
+    "id": "key_01hx...",
+    "key_prefix": "owl_agent_abc123",
+    "key_type": "agent",
+    "name": "CI Agent",
+    "team_id": "tm_01hx...",
+    "app_id": null,
+    "app_name": null,
+    "created_by": "usr_01hx...",
+    "created_by_email": "alice@example.com",
+    "permissions": ["events:read", "metrics:read"],
+    "last_used_at": null,
+    "expires_at": null,
+    "created_at": "2024-03-01T10:00:00.000Z",
+    "updated_at": "2024-03-01T10:00:00.000Z"
+  }
+}
+```
+
+---
+
+## POST /v1/auth/keys
+
+`POST /v1/auth/keys`
+
+**Auth:** JWT (admin or owner role in the target team)
+
+Creates a new API key. The full key value is returned **only in this response** — store it securely.
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  Human-readable label for the key (e.g. `"Production Agent"`).
+</ParamField>
+
+<ParamField body="key_type" type="string" required>
+  Type of key: `"client"` or `"agent"`.
+</ParamField>
+
+<ParamField body="team_id" type="string">
+  UUID of the team to associate the key with. Required for agent keys when `app_id` is not provided.
+</ParamField>
+
+<ParamField body="app_id" type="string">
+  UUID of the app to scope the key to. Required for `client` keys. For agent keys, the team is inferred from the app when provided.
+</ParamField>
+
+<ParamField body="permissions" type="array">
+  List of permission strings to grant. If omitted, the default permissions for the key type are used.
+
+  **Client key permissions** (only): `events:write`
+
+  **Agent key permissions** (any combination): `events:read`, `events:write` *(not allowed for agent keys — use client keys for ingestion)*, `funnels:read`, `funnels:write`, `apps:read`, `apps:write`, `projects:read`, `projects:write`, `metrics:read`, `metrics:write`, `audit_logs:read`
+</ParamField>
+
+<ParamField body="expires_in_days" type="number">
+  Number of days until the key expires. If omitted, the key does not expire.
+</ParamField>
+
+### Response
+
+Returns `201 Created`.
+
+<ResponseField name="key" type="string">
+  The full API key value. **Shown only once.** Store it immediately.
+</ResponseField>
+
+<ResponseField name="api_key" type="object">
+  Metadata for the newly created key (same shape as the list endpoint, without the raw key value).
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"name and key_type required"` |
+| `400`  | `"key_type must be 'client' or 'agent'"` |
+| `400`  | `"Client keys require an app_id"` |
+| `400`  | `"Agent keys require a team_id or app_id"` |
+| `400`  | Permission validation error (e.g. unknown permission or permission not allowed for key type) |
+| `403`  | Caller does not have `admin` or `owner` role in the team |
+| `404`  | `"App not found"` — `app_id` does not exist or caller lacks access |
+
+### Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/auth/keys \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Agent",
+    "key_type": "agent",
+    "team_id": "tm_01hx...",
+    "permissions": ["events:read", "metrics:read", "metrics:write"]
+  }'
+```
+
+```json Response
+{
+  "key": "owl_agent_k3y...",
+  "api_key": {
+    "id": "key_01hx...",
+    "key_prefix": "owl_agent_k3y",
+    "key_type": "agent",
+    "name": "Production Agent",
+    "team_id": "tm_01hx...",
+    "app_id": null,
+    "permissions": ["events:read", "metrics:read", "metrics:write"],
+    "expires_at": null,
+    "created_at": "2024-06-15T14:00:00.000Z",
+    "updated_at": "2024-06-15T14:00:00.000Z"
+  }
+}
+```
+
+---
+
+## PATCH /v1/auth/keys/:id
+
+`PATCH /v1/auth/keys/:id`
+
+**Auth:** JWT (admin or owner role in the key's team)
+
+Updates the name and/or permissions of an existing API key.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the API key to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="name" type="string">
+  New human-readable label for the key.
+</ParamField>
+
+<ParamField body="permissions" type="array">
+  Replacement permissions list. Must be valid for the key's existing type. At least one of `name` or `permissions` must be provided.
+</ParamField>
+
+### Response
+
+<ResponseField name="api_key" type="object">
+  Updated key metadata.
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"At least one field to update is required"` |
+| `400`  | Permission validation error |
+| `403`  | Caller lacks `admin` or `owner` role |
+| `404`  | Key not found or revoked |
+
+### Example
+
+```bash
+curl -X PATCH https://api.yourdomain.com/v1/auth/keys/key_01hx... \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Renamed Agent"}'
+```
+
+```json Response
+{
+  "api_key": {
+    "id": "key_01hx...",
+    "name": "Renamed Agent",
+    "key_type": "agent",
+    "key_prefix": "owl_agent_abc123",
+    "permissions": ["events:read", "metrics:read"],
+    "created_at": "2024-03-01T10:00:00.000Z",
+    "updated_at": "2024-06-15T15:00:00.000Z"
+  }
+}
+```
+
+---
+
+## DELETE /v1/auth/keys/:id
+
+`DELETE /v1/auth/keys/:id`
+
+**Auth:** JWT (admin or owner role in the key's team)
+
+Revokes an API key. Revocation is a soft-delete — the key record is retained for audit purposes but becomes immediately invalid for authentication.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  UUID of the API key to revoke.
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean">
+  Always `true` on success.
+</ResponseField>
+
+### Errors
+
+| Status | Error |
+|--------|-------|
+| `403`  | Caller lacks `admin` or `owner` role |
+| `404`  | Key not found or already revoked |
+
+### Example
+
+```bash
+curl -X DELETE https://api.yourdomain.com/v1/auth/keys/key_01hx... \
+  -H "Authorization: Bearer <token>"
+```
+
+```json Response
+{
+  "deleted": true
+}
+```

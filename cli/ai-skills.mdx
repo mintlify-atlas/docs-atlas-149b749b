@@ -1,0 +1,125 @@
+---
+title: 'AI skills'
+description: 'Skill files that teach AI agents how to set up, instrument, and query OwlMetry end-to-end.'
+keywords: ['ai', 'skills', 'agent', 'claude', 'codex', 'automation', 'owlmetry']
+---
+
+The `@owlmetry/cli` package ships with skill files — markdown documents that teach AI agents (Claude Code, Codex, Cursor, and others) how to use OwlMetry. With the skill files loaded, an agent can handle the complete setup and query workflow without human intervention.
+
+## What are skill files?
+
+Skill files are plain markdown files with structured instructions for AI agents. They describe:
+
+- What OwlMetry is and how it works
+- Step-by-step workflows for common tasks
+- The exact CLI commands and flags to use at each step
+- SDK integration patterns for Node.js and Swift
+- Decision trees (for example, which metric type to use, whether to wrap handlers in serverless)
+
+The files are written specifically for agents parsing instructions, not humans reading prose. They use explicit imperative language, structured tables, and concrete code examples that an agent can execute directly.
+
+## Print the skill file paths
+
+```bash
+owlmetry skills
+```
+
+This prints the absolute paths to each skill file on your machine:
+
+```
+OwlMetry AI Skills
+
+  CLI        /usr/local/lib/node_modules/@owlmetry/cli/dist/skills/owlmetry-cli/SKILL.md
+  Node SDK   /usr/local/lib/node_modules/@owlmetry/cli/dist/skills/owlmetry-node/SKILL.md
+  Swift SDK  /usr/local/lib/node_modules/@owlmetry/cli/dist/skills/owlmetry-swift/SKILL.md
+
+Point your AI agent to these files to teach it how to use OwlMetry.
+```
+
+The paths vary depending on how and where you installed the CLI. Always use `owlmetry skills` to get the correct paths for your system.
+
+## Three skill files
+
+<CardGroup cols={3}>
+  <Card title="CLI skill" icon="terminal">
+    Covers authentication, project and app management, metric and funnel definitions, and all query commands. The prerequisite skill — all other skills reference it for setup.
+  </Card>
+  <Card title="Node SDK skill" icon="server">
+    Covers integrating `@owlmetry/node` into a Node.js, Express, Fastify, or serverless service. Includes buffering behavior, graceful shutdown, and instrumentation strategy.
+  </Card>
+  <Card title="Swift SDK skill" icon="apple">
+    Covers integrating the Swift SDK into iOS, iPadOS, and macOS apps. Includes configuration, logging, funnel tracking, and A/B experiments.
+  </Card>
+</CardGroup>
+
+## Point your agent at the skill files
+
+How you load skill files depends on your agent:
+
+<AccordionGroup>
+  <Accordion title="Claude Code">
+    Run `owlmetry skills` to get the file paths, then add them to your project's `.claude/` context, or paste the paths into the conversation and ask Claude to read them:
+
+    ```
+    Read the file at /usr/local/lib/node_modules/@owlmetry/cli/dist/skills/owlmetry-cli/SKILL.md
+    and follow the setup instructions.
+    ```
+
+    You can also add the skill files to your `CLAUDE.md` or project instructions so Claude picks them up automatically on every session.
+  </Accordion>
+  <Accordion title="OpenAI Codex / ChatGPT with file uploads">
+    Run `owlmetry skills` to find the paths, then upload the relevant `SKILL.md` files as attachments. The agent will treat the contents as instructions.
+  </Accordion>
+  <Accordion title="Cursor">
+    Add the skill file paths to your Cursor rules or paste the contents into a `.cursorrules` file in your project root. Cursor picks these up automatically for all AI interactions in that workspace.
+  </Accordion>
+  <Accordion title="Any agent with file access">
+    Run `owlmetry skills` and copy the printed paths. Then instruct your agent:
+
+    ```
+    Before doing anything with OwlMetry, read these skill files:
+    - /path/to/skills/owlmetry-cli/SKILL.md
+    - /path/to/skills/owlmetry-node/SKILL.md
+    ```
+
+    Any agent that can read local files can load the skills.
+  </Accordion>
+</AccordionGroup>
+
+## What the skills enable
+
+With the CLI skill file loaded, an agent can execute the full onboarding flow autonomously:
+
+<Steps>
+  <Step title="Check for existing setup">
+    The agent runs `owlmetry whoami --format json` to detect whether credentials are already configured.
+  </Step>
+  <Step title="Authenticate">
+    If not authenticated, the agent asks for your email address, runs `owlmetry auth send-code`, asks for the code, and runs `owlmetry auth verify`. Credentials are saved automatically.
+  </Step>
+  <Step title="Create project and app">
+    The agent checks for existing projects with `owlmetry projects --format json`. If none exist, it creates a project and an app matched to your tech stack — Apple, Android, web, or backend. It saves the `client_key` from the app creation response.
+  </Step>
+  <Step title="Integrate the SDK">
+    The agent switches to the appropriate SDK skill (Node or Swift) and instruments your codebase — adding `Owl.configure()`, logging calls, and optionally metric and funnel tracking.
+  </Step>
+  <Step title="Define metrics and funnels">
+    When instrumenting structured metrics or funnels, the agent uses the CLI to create the definitions on the server before adding SDK calls. The server rejects events for undefined slugs, so this order matters.
+  </Step>
+  <Step title="Query and verify">
+    After integration, the agent can run `owlmetry events --since 1h --format json` to confirm events are arriving, and `owlmetry metrics query <slug> --project <id>` to verify metric data is being captured.
+  </Step>
+</Steps>
+
+## Why agent-driven setup works
+
+OwlMetry is designed so that no step in the setup or query workflow requires a human to open a browser or interact with a dashboard.
+
+- **All operations are CLI-first.** Every action available in the web dashboard is also available through the CLI using agent API keys.
+- **No interactive prompts.** Every command takes all input via flags. An agent can construct and execute any command without waiting for a prompt.
+- **JSON output on every command.** `--format json` returns structured data that agents can parse, branch on, and chain together.
+- **Errors are structured.** Failed commands print `{ "error": "...", "status": 404 }` to stderr and exit with a non-zero code — exactly what an agent needs to detect and handle failures.
+
+<Tip>
+The fastest way to add OwlMetry to a new project is to run `owlmetry skills`, copy the CLI skill path, and tell your agent: "Read this file and follow the setup instructions for a [Node.js/Swift/etc.] project."
+</Tip>

@@ -1,0 +1,110 @@
+---
+title: Projects & Apps
+description: How OwlMetry organizes your products — projects as top-level units, apps as platform-specific targets.
+---
+
+OwlMetry uses a two-level organizational hierarchy: **projects** contain **apps**. Both belong to a team.
+
+## Projects
+
+A project is the top-level organizational unit. It maps to a product — a mobile app, a web service, an internal tool, or anything you want to observe together.
+
+- Belongs to exactly one team
+- Has a `name` and a URL-safe `slug` (unique within the team)
+- Metric definitions and funnel definitions are scoped to a project
+- Deleting a project soft-deletes all its apps, their API keys, and all metric and funnel definitions
+
+## Apps
+
+An app belongs to a project and represents a specific platform target. One project can have multiple apps — for example, an iOS app, a web frontend, and a backend service.
+
+Apps have a `platform` field with four possible values:
+
+| Platform | Environment values | Bundle ID required |
+|----------|-------------------|--------------------|
+| `apple` | `ios`, `ipados`, `macos` | Yes |
+| `android` | `android` | Yes |
+| `web` | `web` | Yes |
+| `backend` | `backend` | No |
+
+<Note>
+The `apple` platform covers iOS, iPadOS, and macOS with a single app registration. You do not need separate apps for each Apple platform. The Swift SDK sets the correct `environment` value based on the runtime.
+</Note>
+
+## Bundle ID
+
+Apple, Android, and web apps require a `bundle_id`. This is the reverse-DNS identifier for your app (e.g. `com.example.myapp`). It is registered once when you create the app and cannot be changed.
+
+Every ingest request from the SDK must include a matching `bundle_id` field. The server rejects requests where the value does not match. See [Auth](/concepts/auth) for how this works as a security control.
+
+## Soft delete
+
+Deleting a project or app does not remove data from the database. The row's `deleted_at` timestamp is set, and the resource is excluded from all API responses. Historical events, metric data, and funnel data are preserved.
+
+When you create a new project with the same slug after deletion, the old soft-deleted row is permanently removed so the slug can be reused.
+
+## Creating via CLI
+
+<Steps>
+  <Step title="Create a project">
+    ```bash
+    owlmetry projects create \
+      --team-id <team-id> \
+      --name "My Product" \
+      --slug my-product
+    ```
+  </Step>
+  <Step title="Create an app inside the project">
+    ```bash
+    # Apple app (iOS/iPadOS/macOS)
+    owlmetry apps create \
+      --project-id <project-id> \
+      --name "My iOS App" \
+      --platform apple \
+      --bundle-id com.example.myapp
+
+    # Backend service (no bundle ID)
+    owlmetry apps create \
+      --project-id <project-id> \
+      --name "API Server" \
+      --platform backend
+    ```
+  </Step>
+  <Step title="View the app and its client key">
+    ```bash
+    owlmetry apps view <app-id>
+    ```
+    The response includes the `owl_client_` key to use in your SDK configuration.
+  </Step>
+</Steps>
+
+## Creating via API
+
+<CodeGroup>
+```bash Create project
+curl -X POST https://api.yourdomain.com/v1/projects \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "team_id": "<team-id>",
+    "name": "My Product",
+    "slug": "my-product"
+  }'
+```
+
+```bash Create app
+curl -X POST https://api.yourdomain.com/v1/apps \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "<project-id>",
+    "name": "iOS App",
+    "platform": "apple",
+    "bundle_id": "com.example.myapp"
+  }'
+```
+</CodeGroup>
+
+<Warning>
+Only `admin` and `owner` team members can create or delete projects and apps. `member` role has read-only access.
+</Warning>

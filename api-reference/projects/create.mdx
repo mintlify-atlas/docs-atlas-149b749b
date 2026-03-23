@@ -1,0 +1,165 @@
+---
+title: "Create, Update & Delete Projects"
+description: "Create a new project, rename it, or soft-delete it along with all of its apps."
+---
+
+## Create a project
+
+`POST /v1/projects`
+
+**Auth:** Agent key (`projects:write`) or JWT (admin or owner role)
+
+Creates a new project inside a team. You must be an admin or owner of the target team.
+
+### Request body
+
+<ParamField body="team_id" type="string" required>
+  UUID of the team that will own this project.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Human-readable project name.
+</ParamField>
+
+<ParamField body="slug" type="string" required>
+  URL-safe identifier. Must match `^[a-z0-9-]+$` — lowercase letters, numbers,
+  and hyphens only. Must be unique within the team.
+</ParamField>
+
+### Response `201`
+
+Returns the newly created project object.
+
+<ResponseField name="id" type="string">Unique project UUID.</ResponseField>
+<ResponseField name="team_id" type="string">Owning team UUID.</ResponseField>
+<ResponseField name="name" type="string">Project name.</ResponseField>
+<ResponseField name="slug" type="string">URL-safe identifier.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/projects \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "team_id": "t1b2c3d4-0000-0000-0000-000000000099",
+    "name": "Mobile Apps",
+    "slug": "mobile-apps"
+  }'
+```
+
+```json
+{
+  "id": "a1b2c3d4-0000-0000-0000-000000000001",
+  "team_id": "t1b2c3d4-0000-0000-0000-000000000099",
+  "name": "Mobile Apps",
+  "slug": "mobile-apps",
+  "created_at": "2025-01-15T10:00:00.000Z"
+}
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|--------|
+| `400`  | Missing required fields, or `slug` contains invalid characters. |
+| `403`  | You are not a member of the team, or your role is insufficient (member). |
+| `409`  | A project with this `slug` already exists in the team. |
+
+<Note>
+  If a previously deleted project used the same slug, OwlMetry automatically
+  purges the soft-deleted record before inserting the new one. You can safely
+  reuse slugs after deletion.
+</Note>
+
+---
+
+## Update a project
+
+`PATCH /v1/projects/:id`
+
+**Auth:** Agent key (`projects:write`) or JWT (admin or owner role)
+
+Renames a project. At least one field must be provided.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The project UUID to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  New project name.
+</ParamField>
+
+### Response `200`
+
+Returns the updated project object (same shape as the create response).
+
+### Example
+
+```bash
+curl -X PATCH https://api.yourdomain.com/v1/projects/a1b2c3d4-0000-0000-0000-000000000001 \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Client Mobile Apps"}'
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|--------|
+| `400`  | No updatable field was provided. |
+| `403`  | Your role is insufficient (member). |
+| `404`  | Project not found or not accessible. |
+
+---
+
+## Delete a project
+
+`DELETE /v1/projects/:id`
+
+**Auth:** JWT only (admin or owner role)
+
+<Warning>
+  Agent keys cannot delete projects. Only authenticated users (JWT) with an
+  admin or owner role on the team may perform deletions.
+</Warning>
+
+Soft-deletes a project and cascades to all of its apps, API keys, metric
+definitions, and funnel definitions.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The project UUID to delete.
+</ParamField>
+
+### Response `200`
+
+```json
+{ "deleted": true }
+```
+
+### Example
+
+```bash
+curl -X DELETE https://api.yourdomain.com/v1/projects/a1b2c3d4-0000-0000-0000-000000000001 \
+  -H "Authorization: Bearer <jwt>"
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|--------|
+| `403`  | Caller is an API key (not a user JWT), or role is insufficient. |
+| `404`  | Project not found or not accessible. |
+
+<Note>
+  Soft-delete sets a `deleted_at` timestamp — no event data is removed from the
+  database. The project and its apps will no longer appear in list or get
+  endpoints, and all associated API keys stop working immediately.
+</Note>

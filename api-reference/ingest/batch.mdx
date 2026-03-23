@@ -1,0 +1,204 @@
+---
+title: "Batch Ingest Events"
+description: "Send up to 100 events to OwlMetry in a single HTTP request."
+---
+
+`POST /v1/ingest`
+
+**Auth:** Client key (`events:write`) — scoped to a specific app
+
+Ingests a batch of events for the app associated with your client key. This is
+the primary write path used by all OwlMetry SDKs.
+
+## Request headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | Yes | `Bearer owl_client_xxx` |
+| `Content-Type` | Yes | `application/json` |
+| `Content-Encoding` | No | Set to `gzip` to send a compressed body. |
+| `X-Bundle-ID` | Conditional | Required when the app was created with a `bundle_id`. Must match exactly. |
+
+## Request body
+
+<ParamField body="bundle_id" type="string">
+  The app's bundle or package identifier. Required when the app has a
+  `bundle_id` configured. Must match `X-Bundle-ID` if both are present.
+</ParamField>
+
+<ParamField body="events" type="array" required>
+  Array of event payloads. Maximum **100** events per request.
+  <Expandable title="Event payload">
+    <ParamField body="message" type="string" required>
+      Log message or event name. Must be a non-empty string.
+    </ParamField>
+    <ParamField body="level" type="string" required>
+      Severity level. One of: `info`, `debug`, `warn`, `error`.
+    </ParamField>
+    <ParamField body="session_id" type="string" required>
+      UUID identifying the current user session. Generate once per app launch
+      and reuse for the lifetime of that session.
+    </ParamField>
+    <ParamField body="client_event_id" type="string">
+      Optional UUID you generate on the client. Used for deduplication — if an
+      event with this ID already exists for the app in the last 48 hours, the
+      duplicate is silently dropped.
+    </ParamField>
+    <ParamField body="user_id" type="string">
+      Your application's user identifier. Use the `owl_anon_` prefix for
+      anonymous users (e.g. `owl_anon_9f8e7d6c`). Omit if the user is not
+      yet known.
+    </ParamField>
+    <ParamField body="environment" type="string">
+      Runtime environment. Allowed values depend on the app's platform:
+      - `apple` → `ios`, `ipados`, `macos`
+      - `android` → `android`
+      - `web` → `web`
+      - `backend` → `backend`
+    </ParamField>
+    <ParamField body="source_module" type="string">
+      Name of the module or component that emitted the event.
+    </ParamField>
+    <ParamField body="screen_name" type="string">
+      Active screen or route at the time of the event.
+    </ParamField>
+    <ParamField body="app_version" type="string">
+      App version string (e.g. `"1.4.2"`).
+    </ParamField>
+    <ParamField body="build_number" type="string">
+      Build number (e.g. `"204"`).
+    </ParamField>
+    <ParamField body="os_version" type="string">
+      OS version string (e.g. `"17.4"`).
+    </ParamField>
+    <ParamField body="device_model" type="string">
+      Device model identifier (e.g. `"iPhone16,1"`).
+    </ParamField>
+    <ParamField body="locale" type="string">
+      BCP 47 locale tag (e.g. `"en-US"`).
+    </ParamField>
+    <ParamField body="is_dev" type="boolean">
+      Set to `true` for events emitted from a development build or simulator.
+      Defaults to `false`. Development events are filtered out in production
+      dashboards by default.
+    </ParamField>
+    <ParamField body="custom_attributes" type="object">
+      Flat key-value map of strings. Values longer than 200 characters are
+      automatically truncated.
+    </ParamField>
+    <ParamField body="experiments" type="object">
+      Flat key-value map of experiment name → variant (e.g.
+      `{"checkout_flow": "v2"}`). Used to segment event data by experiment.
+    </ParamField>
+    <ParamField body="timestamp" type="string">
+      ISO 8601 timestamp for when the event occurred. Defaults to the server
+      receive time if omitted. Must not be more than 5 minutes in the future
+      or more than 30 days in the past.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="accepted" type="number">
+  Number of events successfully written.
+</ResponseField>
+
+<ResponseField name="rejected" type="number">
+  Number of events that failed validation. Deduplicated events are silently
+  dropped and are **not** counted here.
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Present only when `rejected > 0`. Each entry identifies the failing event.
+  <Expandable title="Error object">
+    <ResponseField name="index" type="number">Zero-based index of the rejected event in the request array.</ResponseField>
+    <ResponseField name="message" type="string">Human-readable validation error.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  The response is returned even when some events are rejected. A `200` status
+  with `rejected > 0` means the valid events were saved; only the listed
+  indices failed.
+</Note>
+
+## Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/ingest \
+  -H "Authorization: Bearer owl_client_xxx" \
+  -H "Content-Type: application/json" \
+  -H "X-Bundle-ID: com.example.myapp" \
+  -d '{
+    "bundle_id": "com.example.myapp",
+    "events": [
+      {
+        "client_event_id": "550e8400-e29b-41d4-a716-446655440001",
+        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+        "user_id": "user_alice",
+        "level": "info",
+        "message": "App launched",
+        "screen_name": "HomeScreen",
+        "environment": "ios",
+        "app_version": "2.1.0",
+        "build_number": "312",
+        "os_version": "17.4",
+        "device_model": "iPhone16,1",
+        "locale": "en-US",
+        "is_dev": false,
+        "timestamp": "2025-03-20T09:00:00.000Z"
+      },
+      {
+        "client_event_id": "550e8400-e29b-41d4-a716-446655440002",
+        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+        "user_id": "user_alice",
+        "level": "error",
+        "message": "Payment failed",
+        "screen_name": "CheckoutScreen",
+        "source_module": "PaymentService",
+        "environment": "ios",
+        "app_version": "2.1.0",
+        "is_dev": false,
+        "custom_attributes": {
+          "error_code": "insufficient_funds",
+          "currency": "USD"
+        },
+        "experiments": {
+          "checkout_flow": "v2"
+        },
+        "timestamp": "2025-03-20T09:05:30.000Z"
+      },
+      {
+        "client_event_id": "550e8400-e29b-41d4-a716-446655440003",
+        "session_id": "550e8400-e29b-41d4-a716-446655440000",
+        "user_id": "user_alice",
+        "level": "info",
+        "message": "owl.track checkout_completed",
+        "environment": "ios",
+        "app_version": "2.1.0",
+        "is_dev": false,
+        "timestamp": "2025-03-20T09:10:00.000Z"
+      }
+    ]
+  }'
+```
+
+```json
+{
+  "accepted": 3,
+  "rejected": 0
+}
+```
+
+## Errors
+
+| Status | Meaning |
+|--------|--------|
+| `400`  | `events` array is missing, empty, exceeds 100 items, or the client key is not scoped to an app. |
+| `403`  | `bundle_id` in the body does not match the app registered for this client key. |
+
+<Warning>
+  Requests are rate-limited per client key. Exceeding the limit returns a
+  `429 Too Many Requests` response. Use batching to stay within limits.
+</Warning>

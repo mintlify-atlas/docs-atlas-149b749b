@@ -1,0 +1,86 @@
+---
+title: "POST /v1/auth/agent-login"
+description: "Authenticate via email code and receive a long-lived agent API key. Designed for non-interactive CLI and agent flows."
+---
+
+`POST /v1/auth/agent-login`
+
+**Auth:** None required
+
+Validates a verification code (obtained from [`POST /v1/auth/send-code`](/api-reference/auth/send-code)) and returns a permanent agent API key instead of a session JWT. This endpoint is designed for CLI tools and automated agents that cannot handle browser-based cookie flows.
+
+If the email has no existing account, a new user and a default team are provisioned automatically before the key is issued.
+
+<Note>
+  Each call to this endpoint creates a new agent API key named `"CLI Agent Key"`. Keys are not deduplicated — call [`GET /v1/auth/keys`](/api-reference/auth/keys) afterward to review and revoke old keys.
+</Note>
+
+<Warning>
+  The full API key value (`api_key`) is returned **only once** in this response. Store it securely — it cannot be retrieved again.
+</Warning>
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  The email address the verification code was sent to.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The 6-digit verification code.
+</ParamField>
+
+<ParamField body="team_id" type="string">
+  The UUID of the team to provision the key for. Required when the user belongs to more than one team. If omitted for a single-team user, that team is selected automatically.
+</ParamField>
+
+## Response
+
+Returns `201 Created`.
+
+<ResponseField name="api_key" type="string">
+  The full agent API key (prefix `owl_agent_`). Shown only once — store it immediately.
+</ResponseField>
+
+<ResponseField name="team" type="object">
+  The team the key was scoped to.
+
+  <Expandable title="team fields">
+    <ResponseField name="team.id" type="string">Team UUID.</ResponseField>
+    <ResponseField name="team.name" type="string">Team display name.</ResponseField>
+    <ResponseField name="team.slug" type="string">URL-safe team identifier.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Errors
+
+| Status | Error |
+|--------|-------|
+| `400`  | `"email and code required"` — one or both fields are missing. |
+| `400`  | `"Multiple teams found. Specify team_id."` — user belongs to multiple teams; include `team_id` in the request. The response body also includes a `teams` array listing available teams. |
+| `401`  | `"Invalid or expired code"` — the code is wrong, already used, or older than 10 minutes. |
+| `403`  | `"Not a member of this team"` — the provided `team_id` does not match any of the user's teams. |
+
+## Example
+
+```bash
+# Step 1 — request a code
+curl -X POST https://api.yourdomain.com/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com"}'
+
+# Step 2 — exchange the code for an agent key
+curl -X POST https://api.yourdomain.com/v1/auth/agent-login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "code": "483921"}'
+```
+
+```json Response
+{
+  "api_key": "owl_agent_k3y...",
+  "team": {
+    "id": "tm_01hx...",
+    "name": "Alice's Team",
+    "slug": "alice-01hx"
+  }
+}
+```

@@ -1,0 +1,73 @@
+---
+title: "Introduction"
+description: "Agent-first observability. Self-hosted. Built on a single Postgres instance."
+---
+
+OwlMetry is a self-hosted observability platform designed for the agentic development era. Point your coding agent at the setup instructions and it handles everything — integration, monitoring, debugging, and performance analysis. The developer doesn't need to open a dashboard, configure alerts, or interpret charts.
+
+<Warning>
+  **Alpha Software** — OwlMetry is in early alpha. APIs, schemas, and configuration may change without notice. Not yet production-ready.
+</Warning>
+
+## Why agent-first?
+
+Most observability tools are built for humans staring at dashboards. OwlMetry is built for agents making API calls. Every feature is accessible programmatically through agent API keys, a CLI, and a complete REST API. The web dashboard exists as an optional visual layer — not the primary interface.
+
+With OwlMetry, your agent can:
+
+1. **Set up observability** — create projects, register apps, and integrate the SDK into your codebase
+2. **Monitor in production** — query events, filter by level/app/time, investigate error clusters
+3. **Diagnose issues** — pull events around an incident window, correlate sessions, trace user journeys
+4. **Act on what it finds** — the agent reads the data, understands the problem, and writes the fix
+
+## Why self-hosted?
+
+Your analytics data is some of the most sensitive information you have — user behavior, device details, session traces, error logs. OwlMetry keeps all of it on your own infrastructure. No data leaves your servers, no third-party vendor has access, no privacy policy to hope they follow.
+
+Self-hosted means GDPR, HIPAA, and SOC 2 compliance becomes a property of your infrastructure, not a vendor promise. And OwlMetry keeps it simple: one Postgres instance, one API server. Monthly partitioning handles event volume, auto-pruning manages disk space.
+
+## What's included
+
+<CardGroup cols={2}>
+  <Card title="REST API" icon="server" href="/api-reference/overview">
+    Complete HTTP API accessible via agent keys, client keys, or JWT. Every dashboard action is available programmatically.
+  </Card>
+  <Card title="CLI" icon="terminal" href="/cli/overview">
+    `owlmetry` CLI for agents and humans. `--format json` for machine consumption, `--format table` for humans.
+  </Card>
+  <Card title="Node.js SDK" icon="node-js" href="/sdks/node">
+    Zero-dependency server SDK. Structured logging, metrics, funnels, and A/B experiments.
+  </Card>
+  <Card title="Swift SDK" icon="swift" href="/sdks/swift">
+    Native SDK for iOS, iPadOS, and macOS. Distributed as a Swift Package.
+  </Card>
+  <Card title="AI Skills" icon="robot" href="/cli/ai-skills">
+    Bundled skill files teach any coding agent (Claude Code, Codex) how to set up, instrument, and query OwlMetry.
+  </Card>
+  <Card title="Self-Hosting Guide" icon="cloud" href="/deploy/vps-setup">
+    One Postgres instance. One API server. Deploy on any Ubuntu VPS in 15–20 minutes.
+  </Card>
+</CardGroup>
+
+## Key features
+
+- **Agent-native API** — `owl_agent_` keys unlock every operation: query events, list apps, analyze funnels
+- **Event ingestion** — batch ingest up to 100 events per request with deduplication and gzip support
+- **Structured metrics** — define metrics, track lifecycle operations, query aggregations (counts, rates, percentiles)
+- **Funnel analytics** — define conversion funnels and query drop-off rates programmatically
+- **A/B experiments** — SDK assigns random variants on first call, persists assignments, tags all events
+- **Anonymous identity** — SDKs generate `owl_anon_` IDs; `/v1/identity/claim` retroactively links to a known user
+- **Audit trail** — automatic logging of all resource mutations, queryable via API, CLI, and dashboard
+- **Single Postgres** — no Kafka, no ClickHouse, no Redis. Monthly-partitioned events, auto-pruning by size limit
+- **Role-based access** — **owner** > **admin** > **member** with per-key permission scopes
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get OwlMetry running and send your first events in minutes.
+  </Card>
+  <Card title="Self-Hosting" icon="server" href="/deploy/vps-setup">
+    Deploy OwlMetry on your own VPS with the complete setup guide.
+  </Card>
+</CardGroup>

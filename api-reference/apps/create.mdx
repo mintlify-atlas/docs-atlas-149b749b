@@ -1,0 +1,179 @@
+---
+title: "Create, Update & Delete Apps"
+description: "Register a new app inside a project, rename it, or soft-delete it along with its API keys."
+---
+
+## Create an app
+
+`POST /v1/apps`
+
+**Auth:** Agent key (`apps:write`) or JWT (admin or owner role)
+
+Creates a new app inside a project and automatically provisions a client key for it.
+
+### Request body
+
+<ParamField body="project_id" type="string" required>
+  UUID of the project this app belongs to.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Human-readable app name.
+</ParamField>
+
+<ParamField body="platform" type="string" required>
+  Target platform. Must be one of: `apple`, `android`, `web`, `backend`.
+
+  The platform determines which `environment` values are accepted during ingest:
+  - `apple` → `ios`, `ipados`, `macos`
+  - `android` → `android`
+  - `web` → `web`
+  - `backend` → `backend`
+</ParamField>
+
+<ParamField body="bundle_id" type="string">
+  Bundle or package identifier (e.g. `com.example.myapp`, `io.example.app`).
+  Required for all platforms **except** `backend`. The value is validated
+  against the `X-Bundle-ID` header on every ingest request for this app.
+</ParamField>
+
+### Response `201`
+
+Returns the newly created app object.
+
+<ResponseField name="id" type="string">Unique app UUID.</ResponseField>
+<ResponseField name="team_id" type="string">Owning team UUID (derived from the project).</ResponseField>
+<ResponseField name="project_id" type="string">Parent project UUID.</ResponseField>
+<ResponseField name="name" type="string">App name.</ResponseField>
+<ResponseField name="platform" type="string">Platform identifier.</ResponseField>
+<ResponseField name="bundle_id" type="string | null">Bundle ID, or `null` for backend apps.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+<Note>
+  A client key (`owl_client_...`) is generated and stored at creation time.
+  It is never returned through the API — retrieve it from the dashboard.
+</Note>
+
+### Example
+
+```bash
+curl -X POST https://api.yourdomain.com/v1/apps \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "a1b2c3d4-0000-0000-0000-000000000001",
+    "name": "iOS App",
+    "platform": "apple",
+    "bundle_id": "com.example.myapp"
+  }'
+```
+
+```json
+{
+  "id": "a9b8c7d6-0000-0000-0000-000000000042",
+  "team_id": "t1b2c3d4-0000-0000-0000-000000000099",
+  "project_id": "a1b2c3d4-0000-0000-0000-000000000001",
+  "name": "iOS App",
+  "platform": "apple",
+  "bundle_id": "com.example.myapp",
+  "created_at": "2025-01-16T08:30:00.000Z"
+}
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|--------|
+| `400`  | Missing required fields, invalid `platform`, or `bundle_id` omitted for a non-backend platform. |
+| `403`  | Your role is insufficient (member). |
+| `404`  | Project not found or not accessible. |
+
+---
+
+## Update an app
+
+`PATCH /v1/apps/:id`
+
+**Auth:** Agent key (`apps:write`) or JWT (admin or owner role)
+
+Renames an app. At least one field must be provided.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The app UUID to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  New app name.
+</ParamField>
+
+### Response `200`
+
+Returns the updated app object (same shape as the create response).
+
+### Example
+
+```bash
+curl -X PATCH https://api.yourdomain.com/v1/apps/a9b8c7d6-0000-0000-0000-000000000042 \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "OwlMetry iOS"}'
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|--------|
+| `400`  | No updatable field was provided. |
+| `403`  | Your role is insufficient (member). |
+| `404`  | App not found or not accessible. |
+
+---
+
+## Delete an app
+
+`DELETE /v1/apps/:id`
+
+**Auth:** JWT only (admin or owner role)
+
+<Warning>
+  Agent keys cannot delete apps. Only authenticated users (JWT) with an admin
+  or owner role on the team may perform deletions.
+</Warning>
+
+Soft-deletes an app and revokes all of its API keys.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The app UUID to delete.
+</ParamField>
+
+### Response `200`
+
+```json
+{ "deleted": true }
+```
+
+### Example
+
+```bash
+curl -X DELETE https://api.yourdomain.com/v1/apps/a9b8c7d6-0000-0000-0000-000000000042 \
+  -H "Authorization: Bearer <jwt>"
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|--------|
+| `403`  | Caller is an API key (not a user JWT), or role is insufficient. |
+| `404`  | App not found or not accessible. |
+
+<Note>
+  Soft-delete sets a `deleted_at` timestamp — event data already ingested is
+  retained. The app will no longer appear in list or get endpoints, and all
+  associated client keys stop working immediately.
+</Note>

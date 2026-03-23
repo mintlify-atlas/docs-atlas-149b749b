@@ -1,0 +1,172 @@
+---
+title: Funnels
+description: Define conversion funnels, track steps from your SDK, and query drop-off rates and experiment breakdowns.
+---
+
+Funnels let you measure how users move through a sequence of steps — signup flows, onboarding, checkout, or any multi-step journey you care about.
+
+## Funnel definitions
+
+A funnel definition belongs to a project and has a `slug`, a `name`, and an ordered list of steps. Each step has a `name` and an `event_filter` that matches funnel events.
+
+Funnels support up to 20 steps.
+
+```json
+{
+  "name": "Onboarding",
+  "slug": "onboarding",
+  "steps": [
+    {
+      "name": "Started signup",
+      "event_filter": { "message": "track:signup-started" }
+    },
+    {
+      "name": "Verified email",
+      "event_filter": { "message": "track:email-verified" }
+    },
+    {
+      "name": "Completed profile",
+      "event_filter": { "message": "track:profile-completed" }
+    }
+  ]
+}
+```
+
+Create funnel definitions via the CLI or API:
+
+<CodeGroup>
+```bash CLI
+owlmetry funnels create \
+  --project <project-id> \
+  --name "Onboarding" \
+  --slug onboarding \
+  --steps '[{"name":"Started signup","event_filter":{"message":"track:signup-started"}},{"name":"Completed profile","event_filter":{"message":"track:profile-completed"}}]'
+```
+
+```bash API
+curl -X POST https://api.yourdomain.com/v1/projects/<projectId>/funnels \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Onboarding",
+    "slug": "onboarding",
+    "steps": [
+      { "name": "Started signup", "event_filter": { "message": "track:signup-started" } },
+      { "name": "Completed profile", "event_filter": { "message": "track:profile-completed" } }
+    ]
+  }'
+```
+</CodeGroup>
+
+## Tracking funnel steps
+
+Call `Owl.track()` at each step in your code. The SDK emits an info-level event with the message `track:<stepName>`, which the server dual-writes to the `funnel_events` table.
+
+<CodeGroup>
+```typescript Node SDK
+import { Owl } from '@owlmetry/node';
+
+Owl.track('signup-started');
+
+// With custom attributes
+Owl.track('signup-completed', { method: 'email' });
+
+// Scoped to a user
+const owl = Owl.withUser('user_123');
+owl.track('profile-completed', { avatar_uploaded: 'true' });
+```
+
+```swift Swift SDK
+Owl.track("signup-started")
+
+// With attributes
+Owl.track("signup-completed", attributes: ["method": "apple"])
+```
+</CodeGroup>
+
+<Note>
+Funnel analytics require a `user_id` on the event. Anonymous users (with `owl_anon_` IDs) are included in funnel counts. Use `POST /v1/identity/claim` to retroactively link anonymous events to a known user — this updates funnel_events as well.
+</Note>
+
+## Querying drop-off rates
+
+Query funnel analytics with `GET /v1/projects/:projectId/funnels/:slug/query`:
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/<id>/funnels/onboarding/query?since=2026-03-01T00:00:00Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+The response includes per-step analytics:
+
+```json
+{
+  "slug": "onboarding",
+  "analytics": {
+    "mode": "closed",
+    "total_users": 1200,
+    "steps": [
+      {
+        "step_index": 0,
+        "step_name": "Started signup",
+        "unique_users": 1200,
+        "percentage": 100.0,
+        "drop_off_count": 0,
+        "drop_off_percentage": 0.0
+      },
+      {
+        "step_index": 1,
+        "step_name": "Verified email",
+        "unique_users": 940,
+        "percentage": 78.3,
+        "drop_off_count": 260,
+        "drop_off_percentage": 21.7
+      },
+      {
+        "step_index": 2,
+        "step_name": "Completed profile",
+        "unique_users": 710,
+        "percentage": 59.2,
+        "drop_off_count": 230,
+        "drop_off_percentage": 24.5
+      }
+    ]
+  }
+}
+```
+
+## Query parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `since` | Start of time range. Defaults to last 30 days |
+| `until` | End of time range |
+| `app_id` | Filter to a specific app within the project |
+| `app_version` | Filter to a specific app version |
+| `environment` | Filter by runtime environment |
+| `mode` | `closed` (default) or `open`. Closed mode requires steps in order; open mode counts each step independently |
+| `group_by` | Group results by `environment`, `app_version`, or `experiment:<name>` |
+
+## Grouping by experiment variant
+
+Pass `group_by=experiment:<experiment-name>` to see funnel conversion rates broken down by A/B variant:
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/<id>/funnels/onboarding/query?group_by=experiment:onboarding-flow" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+The response includes a `breakdown` array with separate step analytics for each variant value. This lets your agent compare conversion rates across experiment arms and identify which variant performs better.
+
+<CodeGroup>
+```bash CLI
+# Query last 7 days
+owlmetry funnels query onboarding --project <id> --since 7d
+
+# List all funnel definitions
+owlmetry funnels --project <id>
+
+# View a funnel definition
+owlmetry funnels view onboarding --project <id>
+```
+</CodeGroup>

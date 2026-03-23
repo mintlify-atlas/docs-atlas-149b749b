@@ -1,0 +1,161 @@
+---
+title: "List metrics"
+description: "List and retrieve metric definitions for a project."
+---
+
+## List metric definitions
+
+`GET /v1/projects/:projectId/metrics`
+
+**Auth:** Agent key (`metrics:read`) or JWT
+
+Returns all active (non-deleted) metric definitions for the given project.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+### Response
+
+<ResponseField name="metrics" type="array">
+  Array of metric definition objects.
+
+  <Expandable title="Metric definition fields">
+    <ResponseField name="id" type="string">
+      Unique metric definition ID.
+    </ResponseField>
+    <ResponseField name="project_id" type="string">
+      The project this metric belongs to.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Human-readable metric name.
+    </ResponseField>
+    <ResponseField name="slug" type="string">
+      URL-safe identifier. Lowercase letters, numbers, and hyphens only (e.g. `api-latency`).
+    </ResponseField>
+    <ResponseField name="description" type="string | null">
+      Short description of the metric.
+    </ResponseField>
+    <ResponseField name="documentation" type="string | null">
+      Extended markdown documentation for the metric.
+    </ResponseField>
+    <ResponseField name="schema_definition" type="object | null">
+      Optional schema describing expected event attributes.
+    </ResponseField>
+    <ResponseField name="aggregation_rules" type="object | null">
+      Rules controlling how events are aggregated.
+    </ResponseField>
+    <ResponseField name="status" type='"active" | "paused"'>
+      Whether the metric is actively collecting events.
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 creation timestamp.
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 last-updated timestamp.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/metrics" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "metrics": [
+    {
+      "id": "mdef_01j9z",
+      "project_id": "proj_abc",
+      "name": "API Latency",
+      "slug": "api-latency",
+      "description": "Tracks end-to-end latency of API calls.",
+      "documentation": null,
+      "schema_definition": null,
+      "aggregation_rules": { "lifecycle": true },
+      "status": "active",
+      "created_at": "2025-01-15T10:00:00.000Z",
+      "updated_at": "2025-01-15T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## Get metric by slug
+
+`GET /v1/projects/:projectId/metrics/:slug`
+
+**Auth:** Agent key (`metrics:read`) or JWT
+
+Returns a single metric definition, identified by its slug. The response includes the full `documentation` field.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The metric slug (e.g. `api-latency`).
+</ParamField>
+
+### Response
+
+Returns a single metric definition object. See the fields listed above.
+
+### Example
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/metrics/api-latency" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "id": "mdef_01j9z",
+  "project_id": "proj_abc",
+  "name": "API Latency",
+  "slug": "api-latency",
+  "description": "Tracks end-to-end latency of API calls.",
+  "documentation": "## API Latency\n\nUse `metric:api-latency:start` on request and `metric:api-latency:complete` on response.",
+  "schema_definition": null,
+  "aggregation_rules": { "lifecycle": true },
+  "status": "active",
+  "created_at": "2025-01-15T10:00:00.000Z",
+  "updated_at": "2025-01-15T10:00:00.000Z"
+}
+```
+
+---
+
+## Get metric by ID
+
+`GET /v1/metrics/by-id/:id`
+
+**Auth:** Agent key (`metrics:read`) or JWT
+
+Lookup a metric definition directly by its internal ID, across any project your credential has access to. Useful when you have stored an ID but not the project context.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The metric definition ID.
+</ParamField>
+
+### Response
+
+Returns a single metric definition object (same shape as above).
+
+### Example
+
+```bash
+curl "https://api.yourdomain.com/v1/metrics/by-id/mdef_01j9z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```

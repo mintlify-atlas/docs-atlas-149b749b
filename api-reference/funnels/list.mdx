@@ -1,0 +1,156 @@
+---
+title: "List funnels"
+description: "List and retrieve funnel definitions for a project."
+---
+
+## List funnel definitions
+
+`GET /v1/projects/:projectId/funnels`
+
+**Auth:** Agent key (`funnels:read`) or JWT
+
+Returns all active (non-deleted) funnel definitions for the given project.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+### Response
+
+<ResponseField name="funnels" type="array">
+  Array of funnel definition objects.
+
+  <Expandable title="Funnel definition fields">
+    <ResponseField name="id" type="string">
+      Unique funnel definition ID.
+    </ResponseField>
+    <ResponseField name="project_id" type="string">
+      The project this funnel belongs to.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Human-readable funnel name.
+    </ResponseField>
+    <ResponseField name="slug" type="string">
+      URL-safe identifier. Lowercase letters, numbers, and hyphens only (e.g. `onboarding`).
+    </ResponseField>
+    <ResponseField name="description" type="string | null">
+      Short description of the funnel.
+    </ResponseField>
+    <ResponseField name="steps" type="array">
+      Ordered list of funnel steps. Each step defines an event filter that matches the user action for that stage.
+
+      <Expandable title="Step fields">
+        <ResponseField name="name" type="string">
+          Display name for this step (e.g. `Viewed Pricing`).
+        </ResponseField>
+        <ResponseField name="event_filter" type="object">
+          Criteria used to match events to this step. At least one of `message` or `screen_name` must be set.
+
+          <Expandable title="event_filter fields">
+            <ResponseField name="message" type="string">
+              Matches events whose `message` equals this value.
+            </ResponseField>
+            <ResponseField name="screen_name" type="string">
+              Matches events whose `screen_name` equals this value.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 creation timestamp.
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 last-updated timestamp.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/funnels" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "funnels": [
+    {
+      "id": "fdef_01ab",
+      "project_id": "proj_abc",
+      "name": "Onboarding",
+      "slug": "onboarding",
+      "description": "User journey from install to first transaction.",
+      "steps": [
+        { "name": "App Opened",      "event_filter": { "message": "app_open" } },
+        { "name": "Viewed Pricing",  "event_filter": { "screen_name": "PricingScreen" } },
+        { "name": "Started Signup",  "event_filter": { "message": "signup_start" } },
+        { "name": "Completed Signup","event_filter": { "message": "signup_complete" } }
+      ],
+      "created_at": "2025-02-10T14:00:00.000Z",
+      "updated_at": "2025-02-10T14:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## Get funnel by slug
+
+`GET /v1/projects/:projectId/funnels/:slug`
+
+**Auth:** Agent key (`funnels:read`) or JWT
+
+Returns a single funnel definition identified by its slug.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The funnel slug (e.g. `onboarding`).
+</ParamField>
+
+### Response
+
+Returns a single funnel definition object. See the fields listed above.
+
+### Example
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/funnels/onboarding" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+---
+
+## Get funnel by ID
+
+`GET /v1/funnels/by-id/:id`
+
+**Auth:** Agent key (`funnels:read`) or JWT
+
+Lookup a funnel definition directly by its internal ID, across any project your credential has access to.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The funnel definition ID.
+</ParamField>
+
+### Response
+
+Returns a single funnel definition object (same shape as above).
+
+### Example
+
+```bash
+curl "https://api.yourdomain.com/v1/funnels/by-id/fdef_01ab" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```

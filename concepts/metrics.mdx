@@ -1,0 +1,152 @@
+---
+title: Metrics
+description: Define named metrics, track operation lifecycles with automatic duration measurement, and query aggregations.
+---
+
+Metrics give you structured performance data beyond raw log events. You define a metric by name and slug, then track it from your SDK. The server aggregates counts, success rates, and duration percentiles automatically.
+
+## Metric definitions
+
+A metric definition is a named record with a `slug`, belonging to a project. The slug is used in SDK calls and API queries.
+
+**Slug rules:** lowercase letters, numbers, and hyphens only (e.g. `api-request`, `image-upload`, `cache-hit`). The Node SDK auto-corrects invalid characters and logs a warning in debug mode.
+
+Create metric definitions via the CLI or API before tracking them:
+
+<CodeGroup>
+```bash CLI
+owlmetry metrics create \
+  --project <project-id> \
+  --name "API Request" \
+  --slug api-request
+```
+
+```bash API
+curl -X POST https://api.yourdomain.com/v1/projects/<projectId>/metrics \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "API Request", "slug": "api-request" }'
+```
+</CodeGroup>
+
+## Lifecycle operations
+
+A lifecycle operation tracks the full arc of a unit of work: start, then complete, fail, or cancel. Duration is measured automatically.
+
+```typescript
+import { Owl } from '@owlmetry/node';
+
+// Start an operation — emits metric:api-request:start
+const op = Owl.startOperation('api-request', { endpoint: '/v1/users' });
+
+try {
+  const result = await fetchUsers();
+  // Emits metric:api-request:complete with duration_ms
+  op.complete({ count: String(result.length) });
+} catch (err) {
+  // Emits metric:api-request:fail with duration_ms + error string
+  op.fail(err.message);
+}
+```
+
+Each `startOperation()` call generates a `tracking_id` UUID that links the `start` and terminal (`complete` / `fail` / `cancel`) events together. This lets the aggregation queries correlate phases correctly.
+
+The four terminal outcomes:
+
+| Method | Phase emitted | Use when |
+|--------|--------------|----------|
+| `op.complete()` | `complete` | The work succeeded |
+| `op.fail(reason)` | `fail` | The work failed with an error |
+| `op.cancel()` | `cancel` | The work was abandoned |
+
+## Single-shot metrics
+
+Use `recordMetric()` when there is no lifecycle — just a data point to count:
+
+```typescript
+// Emits metric:cache-hit:record
+Owl.recordMetric('cache-hit', { key: 'user:123:profile' });
+```
+
+Swift SDK:
+
+```swift
+Owl.recordMetric("cache-hit", attributes: ["key": "user:123:profile"])
+```
+
+## Querying aggregations
+
+Query metric aggregations with `GET /v1/projects/:projectId/metrics/:slug/query`:
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/<id>/metrics/api-request/query?since=2026-03-16T00:00:00Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+The response includes:
+
+```json
+{
+  "slug": "api-request",
+  "aggregation": {
+    "total_count": 14823,
+    "start_count": 4941,
+    "complete_count": 4798,
+    "fail_count": 121,
+    "cancel_count": 22,
+    "record_count": 4941,
+    "success_rate": 97.54,
+    "duration_avg_ms": 143.2,
+    "duration_p50_ms": 98.0,
+    "duration_p95_ms": 412.0,
+    "duration_p99_ms": 1203.0,
+    "unique_users": 387,
+    "error_breakdown": [
+      { "error": "timeout", "count": 89 },
+      { "error": "unauthorized", "count": 32 }
+    ]
+  }
+}
+```
+
+**Success rate** is calculated as `complete / (complete + fail)` — cancel events are excluded.
+
+**Duration percentiles** (p50, p95, p99) are computed with Postgres's `PERCENTILE_CONT` function across all events that have a `duration_ms` value.
+
+## Query parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `since` | Start of time range (ISO 8601). Defaults to last 24 hours |
+| `until` | End of time range (ISO 8601) |
+| `app_id` | Filter to a specific app within the project |
+| `app_version` | Filter to a specific app version |
+| `device_model` | Filter to a specific device model |
+| `os_version` | Filter to a specific OS version |
+| `user_id` | Filter to a specific user |
+| `environment` | Filter to a runtime environment |
+| `group_by` | Group results by `time:hour`, `time:day`, `time:week`, `app_id`, `app_version`, `device_model`, `os_version`, or `environment` |
+
+<CodeGroup>
+```bash CLI
+# Query last 7 days
+owlmetry metrics query api-request --project <id> --since 7d
+
+# List all metric definitions
+owlmetry metrics --project <id>
+
+# Raw metric events (paginated)
+owlmetry metrics events api-request --project <id>
+```
+
+```bash Scoped to a user (Node SDK)
+const owl = Owl.withUser('user_123');
+const op = owl.startOperation('checkout', { items: '3' });
+// ... process checkout ...
+op.complete();
+```
+</CodeGroup>
+
+<Tip>
+Metric definitions are soft-deleted — deleting a definition does not remove historical metric events. Historical data remains queryable by slug even after deletion.
+</Tip>

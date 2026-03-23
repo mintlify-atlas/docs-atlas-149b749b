@@ -1,0 +1,144 @@
+---
+title: "List metric events"
+description: "Retrieve raw, paginated metric events for a given metric slug."
+---
+
+`GET /v1/projects/:projectId/metrics/:slug/events`
+
+**Auth:** Agent key (`metrics:read`) or JWT
+
+Returns the raw stream of metric events for a metric, newest first. Results are paginated using a timestamp-based cursor. Use this endpoint to build custom aggregations or to export event-level data.
+
+## Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The metric slug.
+</ParamField>
+
+## Query parameters
+
+<ParamField query="since" type="string">
+  Return events at or after this time. ISO 8601 datetime.
+</ParamField>
+
+<ParamField query="until" type="string">
+  Return events at or before this time. ISO 8601 datetime.
+</ParamField>
+
+<ParamField query="phase" type="string">
+  Filter to a specific event phase: `start`, `complete`, `fail`, `cancel`, or `record`.
+</ParamField>
+
+<ParamField query="tracking_id" type="string">
+  Filter to events sharing a `tracking_id`. Use this to correlate `start` and `complete`/`fail` events for a single lifecycle.
+</ParamField>
+
+<ParamField query="user_id" type="string">
+  Filter to events from a single user.
+</ParamField>
+
+<ParamField query="environment" type="string">
+  Filter by environment: `ios`, `ipados`, `macos`, `android`, `web`, or `backend`.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Page size. Min `1`, max `200`. Defaults to `50`.
+</ParamField>
+
+<ParamField query="cursor" type="string">
+  Pagination cursor returned in the previous response. Pass this value to fetch the next page.
+</ParamField>
+
+<ParamField query="data_mode" type='"production" | "development" | "all"'>
+  Filter by data origin. Defaults to `all`.
+</ParamField>
+
+## Response
+
+<ResponseField name="events" type="array">
+  Page of metric events, ordered newest first.
+
+  <Expandable title="Event fields">
+    <ResponseField name="id" type="string">Unique event ID.</ResponseField>
+    <ResponseField name="app_id" type="string">The app that emitted this event.</ResponseField>
+    <ResponseField name="session_id" type="string">Session ID at the time of the event.</ResponseField>
+    <ResponseField name="user_id" type="string | null">User ID, if identified.</ResponseField>
+    <ResponseField name="metric_slug" type="string">The metric this event belongs to.</ResponseField>
+    <ResponseField name="phase" type="string">Event phase: `start`, `complete`, `fail`, `cancel`, or `record`.</ResponseField>
+    <ResponseField name="tracking_id" type="string | null">Correlates `start` with its corresponding outcome event.</ResponseField>
+    <ResponseField name="duration_ms" type="number | null">Duration in milliseconds, present on `complete` events when reported by the SDK.</ResponseField>
+    <ResponseField name="error" type="string | null">Error string, present on `fail` events.</ResponseField>
+    <ResponseField name="attributes" type="object | null">Custom key-value attributes attached by the SDK.</ResponseField>
+    <ResponseField name="environment" type="string | null">Runtime environment (e.g. `ios`, `backend`).</ResponseField>
+    <ResponseField name="os_version" type="string | null">OS version string.</ResponseField>
+    <ResponseField name="app_version" type="string | null">App version string.</ResponseField>
+    <ResponseField name="device_model" type="string | null">Device model identifier.</ResponseField>
+    <ResponseField name="build_number" type="string | null">App build number.</ResponseField>
+    <ResponseField name="is_dev" type="boolean">Whether the event was emitted from a development build.</ResponseField>
+    <ResponseField name="client_event_id" type="string | null">Client-assigned deduplication ID.</ResponseField>
+    <ResponseField name="timestamp" type="string">ISO 8601 event timestamp (client time).</ResponseField>
+    <ResponseField name="received_at" type="string">ISO 8601 server ingestion timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cursor" type="string | null">
+  Pass this value as `cursor` on your next request to fetch the next page. `null` when there are no more results.
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  `true` when additional pages are available.
+</ResponseField>
+
+## Example
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/metrics/api-latency/events?phase=fail&limit=20" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "events": [
+    {
+      "id": "mev_03xzq",
+      "app_id": "app_ios_1",
+      "session_id": "sess_abc",
+      "user_id": "usr_42",
+      "metric_slug": "api-latency",
+      "phase": "fail",
+      "tracking_id": "track_7f3a",
+      "duration_ms": null,
+      "error": "timeout",
+      "attributes": { "endpoint": "/v1/orders" },
+      "environment": "ios",
+      "os_version": "17.4",
+      "app_version": "2.4.1",
+      "device_model": "iPhone16,1",
+      "build_number": "241",
+      "is_dev": false,
+      "client_event_id": "cli_evt_99",
+      "timestamp": "2025-03-23T08:15:00.000Z",
+      "received_at": "2025-03-23T08:15:00.412Z"
+    }
+  ],
+  "cursor": "2025-03-23T08:15:00.000Z",
+  "has_more": true
+}
+```
+
+**Paginate to the next page**
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/metrics/api-latency/events?phase=fail&limit=20&cursor=2025-03-23T08:15:00.000Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+**CLI equivalent**
+
+```bash
+owlmetry metrics events api-latency --project proj_abc
+```

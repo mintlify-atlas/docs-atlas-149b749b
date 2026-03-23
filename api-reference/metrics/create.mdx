@@ -1,0 +1,215 @@
+---
+title: "Create & manage metrics"
+description: "Create, update, and delete metric definitions."
+---
+
+## Create a metric
+
+`POST /v1/projects/:projectId/metrics`
+
+**Auth:** Agent key (`metrics:write`) or JWT (admin or owner role required)
+
+Creates a new metric definition in the specified project. Slugs must be unique within a project and contain only lowercase letters, numbers, and hyphens.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+### Body
+
+<ParamField body="name" type="string" required>
+  Human-readable metric name (e.g. `Startup Time`).
+</ParamField>
+
+<ParamField body="slug" type="string" required>
+  URL-safe identifier. Must match `^[a-z0-9-]+$` (e.g. `startup-time`). Must be unique within the project.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Short description of what this metric measures.
+</ParamField>
+
+<ParamField body="documentation" type="string">
+  Extended markdown documentation shown in the dashboard and surfaced by the CLI.
+</ParamField>
+
+<ParamField body="schema_definition" type="object">
+  Optional schema describing expected attributes on metric events.
+
+  <Expandable title="schema_definition fields">
+    <ParamField body="start_fields" type="array">
+      Fields expected on `start` phase events.
+    </ParamField>
+    <ParamField body="complete_fields" type="array">
+      Fields expected on `complete` phase events.
+    </ParamField>
+    <ParamField body="fields" type="array">
+      Fields expected on `record` (single-shot) phase events.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="aggregation_rules" type="object">
+  Rules controlling how the server aggregates events for this metric.
+
+  <Expandable title="aggregation_rules fields">
+    <ParamField body="lifecycle" type="boolean" required>
+      `true` if the metric has start/complete/fail/cancel phases. `false` for single-shot `record` metrics.
+    </ParamField>
+    <ParamField body="duration_field" type="string">
+      Attribute key to use as the primary duration field. Defaults to `duration_ms`.
+    </ParamField>
+    <ParamField body="size_field" type="string">
+      Attribute key to treat as a size metric for aggregation.
+    </ParamField>
+    <ParamField body="error_group_fields" type="array">
+      Attribute keys to group errors by in the `error_breakdown`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Response
+
+Returns the created metric definition with HTTP `201`.
+
+### Errors
+
+| Status | Meaning |
+|--------|---------|
+| `400`  | `name` or `slug` is missing, or the slug format is invalid. |
+| `403`  | The authenticated user or agent key does not have admin access to the project's team. |
+| `409`  | A metric with this slug already exists in this project. |
+
+### Example
+
+```bash
+curl -X POST "https://api.yourdomain.com/v1/projects/proj_abc/metrics" \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Startup Time",
+    "slug": "startup-time",
+    "description": "Time from app launch to first interactive frame.",
+    "aggregation_rules": { "lifecycle": true }
+  }'
+```
+
+```json Response
+{
+  "id": "mdef_02k1a",
+  "project_id": "proj_abc",
+  "name": "Startup Time",
+  "slug": "startup-time",
+  "description": "Time from app launch to first interactive frame.",
+  "documentation": null,
+  "schema_definition": null,
+  "aggregation_rules": { "lifecycle": true },
+  "status": "active",
+  "created_at": "2025-03-01T09:00:00.000Z",
+  "updated_at": "2025-03-01T09:00:00.000Z"
+}
+```
+
+**CLI equivalent**
+
+```bash
+owlmetry metrics create \
+  --project proj_abc \
+  --name "Startup Time" \
+  --slug startup-time \
+  --lifecycle
+```
+
+---
+
+## Update a metric
+
+`PATCH /v1/projects/:projectId/metrics/:slug`
+
+**Auth:** Agent key (`metrics:write`) or JWT (admin or owner role required)
+
+Partially updates a metric definition. Supply only the fields you want to change; all others remain unchanged. At least one field is required.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The current slug of the metric to update.
+</ParamField>
+
+### Body
+
+<ParamField body="name" type="string">
+  New display name.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated description.
+</ParamField>
+
+<ParamField body="documentation" type="string">
+  Updated markdown documentation.
+</ParamField>
+
+<ParamField body="schema_definition" type="object">
+  Replacement schema definition.
+</ParamField>
+
+<ParamField body="aggregation_rules" type="object">
+  Replacement aggregation rules.
+</ParamField>
+
+<ParamField body="status" type='"active" | "paused"'>
+  Set to `paused` to stop accepting new events without deleting the definition.
+</ParamField>
+
+### Response
+
+Returns the updated metric definition.
+
+### Example
+
+```bash
+curl -X PATCH "https://api.yourdomain.com/v1/projects/proj_abc/metrics/startup-time" \
+  -H "Authorization: Bearer owl_agent_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "paused"}'
+```
+
+---
+
+## Delete a metric
+
+`DELETE /v1/projects/:projectId/metrics/:slug`
+
+**Auth:** JWT only (admin or owner role required)
+
+Soft-deletes a metric definition. The metric and its historical events remain queryable via the database but the definition no longer appears in listings. This operation cannot be performed with an agent key.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The slug of the metric to delete.
+</ParamField>
+
+### Response
+
+```json
+{ "deleted": true }
+```
+
+### Example
+
+```bash
+curl -X DELETE "https://api.yourdomain.com/v1/projects/proj_abc/metrics/startup-time" \
+  -H "Authorization: Bearer <jwt>"
+```

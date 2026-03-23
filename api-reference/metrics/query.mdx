@@ -1,0 +1,229 @@
+---
+title: "Query metric aggregations"
+description: "Query aggregated metric data including counts, success rates, duration percentiles, and error breakdowns."
+---
+
+`GET /v1/projects/:projectId/metrics/:slug/query`
+
+**Auth:** Agent key (`metrics:read`) or JWT
+
+Returns pre-computed aggregations over metric events for a time window. Includes lifecycle phase counts, duration percentiles, unique user counts, and a ranked error breakdown. Optionally breaks results down by a dimension using `group_by`.
+
+The default time window is the last **24 hours** when `since` is not provided.
+
+## Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="slug" type="string" required>
+  The metric slug (e.g. `api-latency`).
+</ParamField>
+
+## Query parameters
+
+<ParamField query="since" type="string">
+  Time range start. ISO 8601 datetime (e.g. `2025-03-01T00:00:00Z`). Defaults to 24 hours ago.
+</ParamField>
+
+<ParamField query="until" type="string">
+  Time range end. ISO 8601 datetime. Defaults to now.
+</ParamField>
+
+<ParamField query="app_id" type="string">
+  Filter to a single app within the project.
+</ParamField>
+
+<ParamField query="app_version" type="string">
+  Filter to a specific app version string.
+</ParamField>
+
+<ParamField query="device_model" type="string">
+  Filter to a specific device model.
+</ParamField>
+
+<ParamField query="os_version" type="string">
+  Filter to a specific OS version string.
+</ParamField>
+
+<ParamField query="user_id" type="string">
+  Filter to events from a single user.
+</ParamField>
+
+<ParamField query="environment" type="string">
+  Filter by environment: `ios`, `ipados`, `macos`, `android`, `web`, or `backend`.
+</ParamField>
+
+<ParamField query="group_by" type="string">
+  Break aggregations down by a dimension. Accepted values:
+  `app_id`, `app_version`, `device_model`, `os_version`, `environment`,
+  `time:hour`, `time:day`, `time:week`.
+</ParamField>
+
+<ParamField query="data_mode" type='"production" | "development" | "all"'>
+  Filter by data origin. Defaults to `all`.
+</ParamField>
+
+## Response
+
+<ResponseField name="slug" type="string">
+  The metric slug echoed back.
+</ResponseField>
+
+<ResponseField name="aggregation" type="object">
+  The computed aggregation for the requested window.
+
+  <Expandable title="aggregation fields">
+    <ResponseField name="total_count" type="number">
+      Total number of metric events in the window, across all phases.
+    </ResponseField>
+    <ResponseField name="start_count" type="number">
+      Events with phase `start`.
+    </ResponseField>
+    <ResponseField name="complete_count" type="number">
+      Events with phase `complete`.
+    </ResponseField>
+    <ResponseField name="fail_count" type="number">
+      Events with phase `fail`.
+    </ResponseField>
+    <ResponseField name="cancel_count" type="number">
+      Events with phase `cancel`.
+    </ResponseField>
+    <ResponseField name="record_count" type="number">
+      Events with phase `record` (single-shot metrics).
+    </ResponseField>
+    <ResponseField name="success_rate" type="number | null">
+      `complete / (complete + fail)` as a percentage (0–100), rounded to two decimal places. `null` when there are no complete or fail events.
+    </ResponseField>
+    <ResponseField name="duration_avg_ms" type="number | null">
+      Average duration in milliseconds across events that reported a duration. `null` when no durations are present.
+    </ResponseField>
+    <ResponseField name="duration_p50_ms" type="number | null">
+      50th percentile (median) duration in milliseconds.
+    </ResponseField>
+    <ResponseField name="duration_p95_ms" type="number | null">
+      95th percentile duration in milliseconds.
+    </ResponseField>
+    <ResponseField name="duration_p99_ms" type="number | null">
+      99th percentile duration in milliseconds.
+    </ResponseField>
+    <ResponseField name="unique_users" type="number">
+      Count of distinct `user_id` values in the window.
+    </ResponseField>
+    <ResponseField name="error_breakdown" type="array">
+      Top 20 error strings from `fail` phase events, ranked by frequency.
+
+      <Expandable title="error_breakdown item">
+        <ResponseField name="error" type="string">
+          The error string recorded on the event.
+        </ResponseField>
+        <ResponseField name="count" type="number">
+          Number of `fail` events with this error.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="groups" type="array">
+      Present when `group_by` is supplied. Each entry represents one value of the grouped dimension.
+
+      <Expandable title="groups item">
+        <ResponseField name="key" type="string">
+          The `group_by` dimension name (e.g. `app_version`).
+        </ResponseField>
+        <ResponseField name="value" type="string">
+          The dimension value for this group.
+        </ResponseField>
+        <ResponseField name="total_count" type="number">Total events in this group.</ResponseField>
+        <ResponseField name="complete_count" type="number">Complete events in this group.</ResponseField>
+        <ResponseField name="fail_count" type="number">Fail events in this group.</ResponseField>
+        <ResponseField name="success_rate" type="number | null">Success rate for this group.</ResponseField>
+        <ResponseField name="duration_avg_ms" type="number | null">Average duration for this group.</ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/metrics/api-latency/query?since=2025-03-16T00:00:00Z" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "slug": "api-latency",
+  "aggregation": {
+    "total_count": 1523,
+    "start_count": 780,
+    "complete_count": 741,
+    "fail_count": 23,
+    "cancel_count": 5,
+    "record_count": 0,
+    "success_rate": 96.99,
+    "duration_avg_ms": 112.45,
+    "duration_p50_ms": 87.0,
+    "duration_p95_ms": 312.5,
+    "duration_p99_ms": 890.0,
+    "unique_users": 204,
+    "error_breakdown": [
+      { "error": "timeout", "count": 14 },
+      { "error": "connection_refused", "count": 9 }
+    ]
+  }
+}
+```
+
+**Group by app version**
+
+```bash
+curl "https://api.yourdomain.com/v1/projects/proj_abc/metrics/api-latency/query?since=2025-03-16T00:00:00Z&group_by=app_version" \
+  -H "Authorization: Bearer owl_agent_xxx"
+```
+
+```json Response
+{
+  "slug": "api-latency",
+  "aggregation": {
+    "total_count": 1523,
+    "start_count": 780,
+    "complete_count": 741,
+    "fail_count": 23,
+    "cancel_count": 5,
+    "record_count": 0,
+    "success_rate": 96.99,
+    "duration_avg_ms": 112.45,
+    "duration_p50_ms": 87.0,
+    "duration_p95_ms": 312.5,
+    "duration_p99_ms": 890.0,
+    "unique_users": 204,
+    "error_breakdown": [],
+    "groups": [
+      {
+        "key": "app_version",
+        "value": "2.4.1",
+        "total_count": 890,
+        "complete_count": 865,
+        "fail_count": 8,
+        "success_rate": 99.08,
+        "duration_avg_ms": 98.3
+      },
+      {
+        "key": "app_version",
+        "value": "2.4.0",
+        "total_count": 633,
+        "complete_count": 603,
+        "fail_count": 15,
+        "success_rate": 97.57,
+        "duration_avg_ms": 131.2
+      }
+    ]
+  }
+}
+```
+
+**CLI equivalent**
+
+```bash
+owlmetry metrics query api-latency --project proj_abc --since 7d
+```
